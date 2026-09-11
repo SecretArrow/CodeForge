@@ -68,16 +68,16 @@ jobs:
             sudo mkdir -p "${AGL_DIR}/Versions/A"
             sudo ln -sfn A "${AGL_DIR}/Versions/Current"
             sudo ln -sfn Versions/A "${AGL_DIR}/Resources"
-            cat <<'EOF' | sudo tee "${AGL_DIR}/Versions/A/AGL.tbd" >/dev/null
---- !tapi-tbd-v3
-archs:           [ x86_64, arm64 ]
-platform:        macosx
-install-name:    /System/Library/Frameworks/AGL.framework/Versions/A/AGL
-current-version: 65
-compatibility-version: 1
-exports:         []
-undefineds:      []
-EOF
+            {
+              echo '--- !tapi-tbd-v3'
+              echo 'archs:           [ x86_64, arm64 ]'
+              echo 'platform:        macosx'
+              echo 'install-name:    /System/Library/Frameworks/AGL.framework/Versions/A/AGL'
+              echo 'current-version: 65'
+              echo 'compatibility-version: 1'
+              echo 'exports:         []'
+              echo 'undefineds:      []'
+            } | sudo tee "${AGL_DIR}/Versions/A/AGL.tbd" >/dev/null
             sudo ln -sfn Versions/A/AGL.tbd "${AGL_DIR}/AGL"
             echo "AGL stub created at ${AGL_DIR}"
           fi
