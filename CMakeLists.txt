@@ -39,6 +39,12 @@ else()
     target_compile_options(CodeForgeLib PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+qt_add_executable(CodeForge WIN32 MACOSX_BUNDLE src/main.cpp)
+target_link_libraries(CodeForge PRIVATE CodeForgeLib)
+set_target_properties(CodeForge PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    QT_RESOURCE_PREFIX "/codeforge")
+
 if(APPLE)
     set_target_properties(CodeForge PROPERTIES
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.secretarrow.codeforge"
@@ -46,12 +52,6 @@ if(APPLE)
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
         MACOSX_BUNDLE_BUNDLE_NAME "CodeForge")
 endif()
-
-qt_add_executable(CodeForge WIN32 MACOSX_BUNDLE src/main.cpp)
-target_link_libraries(CodeForge PRIVATE CodeForgeLib)
-set_target_properties(CodeForge PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    QT_RESOURCE_PREFIX "/codeforge")
 
 # Manual qrc with explicit aliases (correct mapping to /themes/<name>.json).
 target_sources(CodeForgeLib PRIVATE src/resources.qrc)

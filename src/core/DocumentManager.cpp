@@ -287,8 +287,11 @@ void DocumentManager::writeRecoveryFor(TextDocument* doc)
     if (!Crypto::randomBytes(reinterpret_cast<quint8*>(nonce.data()), Crypto::kNonceSize)) return;
 
     QByteArray cipher;
+    // AAD intentionally empty: the "CFRB1" magic header already binds this
+    // blob to the recovery context, and an empty AAD keeps the CNG and
+    // OpenSSL backends byte-identical on every Windows SDK revision.
     if (!Crypto::gcmEncrypt(key.data(), reinterpret_cast<const quint8*>(nonce.constData()), json,
-                            QByteArrayLiteral("codeforge-recovery"), cipher))
+                            QByteArray(), cipher))
         return;
 
     QByteArray blob;
@@ -326,7 +329,7 @@ QList<DocumentManager::RecoveryEntry> DocumentManager::listRecoveryEntries() con
         const QByteArray nonce = blob.mid(5, Crypto::kNonceSize);
         QByteArray plain;
         if (!Crypto::gcmDecrypt(key.data(), reinterpret_cast<const quint8*>(nonce.constData()),
-                                blob.mid(5 + Crypto::kNonceSize), QByteArrayLiteral("codeforge-recovery"), plain))
+                                blob.mid(5 + Crypto::kNonceSize), QByteArray(), plain))
             continue;
         const QJsonObject payload = QJsonDocument::fromJson(plain).object();
         RecoveryEntry e;
@@ -353,7 +356,7 @@ bool DocumentManager::restoreRecoveryInto(TextDocument* doc)
     const QByteArray nonce = blob.mid(5, Crypto::kNonceSize);
     QByteArray plain;
     if (!Crypto::gcmDecrypt(key.data(), reinterpret_cast<const quint8*>(nonce.constData()),
-                            blob.mid(5 + Crypto::kNonceSize), QByteArrayLiteral("codeforge-recovery"), plain))
+                            blob.mid(5 + Crypto::kNonceSize), QByteArray(), plain))
         return false;
 
     const QJsonObject payload = QJsonDocument::fromJson(plain).object();

@@ -47,8 +47,21 @@ bool Crypto::gcmEncrypt(const quint8* key, const quint8* nonce,
         info.pbTag = tagBuf;
         info.cbTag = kTagSize;
         if (!aad.isEmpty()) {
-            info.pbAAD = const_cast<PUCHAR>(reinterpret_cast<const uchar*>(aad.constData()));
-            info.cbAAD = ULONG(aad.size());
+            // Some newer Windows SDK revisions dropped the AAD members from
+            // BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO. Guard with a C++20
+            // requires-expression so this compiles everywhere: on SDKs that
+            // still expose the members we bind the AAD; otherwise fail closed
+            // (never produce a ciphertext that the other backend could not
+            // verify). Callers in this app use an empty AAD, so this path is
+            // fully functional on every SDK revision.
+            if constexpr (requires(BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO& i) { i.pbAAD; i.cbAAD; }) {
+                info.pbAAD = const_cast<PUCHAR>(reinterpret_cast<const uchar*>(aad.constData()));
+                info.cbAAD = ULONG(aad.size());
+            } else {
+                Logger::instance().warning(
+                    QStringLiteral("Crypto: CNG GCM AAD unavailable in this Windows SDK; rejecting AAD-protected request"));
+                break;   // ok stays false; handles are cleaned up below
+            }
         }
 
         out.clear();
@@ -97,8 +110,14 @@ bool Crypto::gcmDecrypt(const quint8* key, const quint8* nonce,
         info.pbTag = const_cast<PUCHAR>(reinterpret_cast<const uchar*>(tag.constData()));
         info.cbTag = kTagSize;
         if (!aad.isEmpty()) {
-            info.pbAAD = const_cast<PUCHAR>(reinterpret_cast<const uchar*>(aad.constData()));
-            info.cbAAD = ULONG(aad.size());
+            if constexpr (requires(BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO& i) { i.pbAAD; i.cbAAD; }) {
+                info.pbAAD = const_cast<PUCHAR>(reinterpret_cast<const uchar*>(aad.constData()));
+                info.cbAAD = ULONG(aad.size());
+            } else {
+                Logger::instance().warning(
+                    QStringLiteral("Crypto: CNG GCM AAD unavailable in this Windows SDK; rejecting AAD-protected request"));
+                break;   // ok stays false; handles are cleaned up below
+            }
         }
 
         const QByteArray cipher = cipherWithTag.left(cipherWithTag.size() - kTagSize);

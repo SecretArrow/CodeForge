@@ -100,8 +100,16 @@ jobs:
           mkdir -p dist AppDir/usr/bin
           cp build/bin/CodeForge AppDir/usr/bin/CodeForge
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          chmod +x linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
+          # linuxdeploy discovers plugins in PATH under the exact name
+          # "linuxdeploy-plugin-<name>" (no arch suffix)
+          cp linuxdeploy-plugin-qt-x86_64.AppImage linuxdeploy-plugin-qt
+          export PATH="$PWD:$PATH"
           export APPIMAGE_EXTRACT_AND_RUN=1
+          QMAKE_BIN="$(command -v qmake || true)"
+          if [ -z "$QMAKE_BIN" ]; then QMAKE_BIN="$(command -v qmake6 || true)"; fi
+          export LINUXDEPLOY_PLUGIN_QT_QMAKE="$QMAKE_BIN"
           ./linuxdeploy-x86_64.AppImage \
             --appdir "$PWD/AppDir" \
             -e AppDir/usr/bin/CodeForge \
