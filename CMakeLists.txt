@@ -29,7 +29,14 @@ if(APPLE)
     endif()
 endif()
 
-find_package(OpenSSL QUIET)  # Linux AES-256-GCM backend (Windows uses CNG/BCrypt)
+if(APPLE)
+    # Homebrew's libcrypto is single-arch and would break universal builds,
+    # and macOS exposes no OS-provided GCM API from C. Crypto::available()
+    # then reports false on macOS (Windows uses CNG, Linux uses OpenSSL).
+    set(OPENSSL_FOUND OFF)
+else()
+    find_package(OpenSSL QUIET)  # Linux AES-256-GCM backend (Windows uses CNG/BCrypt)
+endif()
 
 file(GLOB_RECURSE CODEFORGE_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
