@@ -32,11 +32,8 @@ jobs:
           - name: linux-x86_64
             os: ubuntu-latest
             qt_arch: ''
-          - name: macos-arm64
+          - name: macos-universal
             os: macos-latest
-            qt_arch: ''
-          - name: macos-x64
-            os: macos-13
             qt_arch: ''
 
     steps:
@@ -66,20 +63,17 @@ jobs:
           AGL_DIR="${SDK_PATH}/System/Library/Frameworks/AGL.framework"
           if [ ! -e "${AGL_DIR}" ]; then
             sudo mkdir -p "${AGL_DIR}/Versions/A"
+            # An empty Mach-O dylib is guaranteed to be recognized by ld,
+            # unlike a hand-written .tbd (parser format quirks). CodeForge
+            # and Qt's runtime GL backend do not call any AGL symbol.
+            printf '' | clang -x c - -dynamiclib -o "${AGL_DIR}/Versions/A/AGL" \
+              -arch arm64 -arch x86_64 \
+              -Wl,-install_name,/System/Library/Frameworks/AGL.framework/Versions/A/AGL \
+              -Wl,-current_version,65 -Wl,-compatibility_version,1
             sudo ln -sfn A "${AGL_DIR}/Versions/Current"
+            sudo ln -sfn Versions/A/AGL "${AGL_DIR}/AGL"
             sudo ln -sfn Versions/A "${AGL_DIR}/Resources"
-            {
-              echo '--- !tapi-tbd-v3'
-              echo 'archs:           [ x86_64, arm64 ]'
-              echo 'platform:        macosx'
-              echo 'install-name:    /System/Library/Frameworks/AGL.framework/Versions/A/AGL'
-              echo 'current-version: 65'
-              echo 'compatibility-version: 1'
-              echo 'exports:         []'
-              echo 'undefineds:      []'
-            } | sudo tee "${AGL_DIR}/Versions/A/AGL.tbd" >/dev/null
-            sudo ln -sfn Versions/A/AGL.tbd "${AGL_DIR}/AGL"
-            echo "AGL stub created at ${AGL_DIR}"
+            echo "AGL stub dylib created at ${AGL_DIR}"
           fi
 
       - name: Setup ccache
@@ -91,11 +85,17 @@ jobs:
 
       - name: Configure (CMake + Ninja, Release)
         shell: bash
-        run: >
-          cmake -S . -B build -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-          -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}"
+        run: |
+          OSX_ARGS=""
+          if [ "${RUNNER_OS}" = "macOS" ]; then
+            # Qt 6 macOS binaries are universal2; build a universal app so one
+            # artifact supports both Apple Silicon and Intel Macs.
+            OSX_ARGS='-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64'
+          fi
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}" ${OSX_ARGS}
 
       - name: Build
         shell: bash
@@ -193,8 +193,7 @@ jobs:
             |----------|------|
             | Windows 10/11 x64 | `CodeForge-*-windows-x64.zip` — extract & run `CodeForge.exe` (portable-friendly) |
             | Linux x86_64 | `CodeForge-*-linux-x86_64.AppImage` — `chmod +x` then run |
-            | macOS Apple Silicon | `CodeForge-*-macos-arm64.zip` |
-            | macOS Intel | `CodeForge-*-macos-x64.zip` |
+            | macOS (universal: Apple Silicon + Intel) | `CodeForge-*-macos-universal.zip` |
 
             > macOS builds are unsigned — on first launch right-click → Open (Gatekeeper).
             > Windows builds are portable: no installer required, settings live next to the exe when a `portable/` folder exists.
