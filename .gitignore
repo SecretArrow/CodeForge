@@ -1,0 +1,7 @@
+build/
+.vs/
+.vscode/
+*.user
+installer/output/
+release/
+dist/

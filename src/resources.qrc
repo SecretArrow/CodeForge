@@ -1,0 +1,11 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/themes">
+        <file alias="dark-plus.json">resources/themes/dark-plus.json</file>
+        <file alias="light-plus.json">resources/themes/light-plus.json</file>
+        <file alias="dracula.json">resources/themes/dracula.json</file>
+        <file alias="monokai.json">resources/themes/monokai.json</file>
+        <file alias="hc-dark.json">resources/themes/hc-dark.json</file>
+        <file alias="hc-light.json">resources/themes/hc-light.json</file>
+    </qresource>
+</RCC>

@@ -1,0 +1,167 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  QT_VERSION: '6.7.3'
+  CF_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('1.0.0-build.{0}', github.run_number) }}
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            qt_arch: win64_msvc2019_64
+          - name: linux-x86_64
+            os: ubuntu-latest
+            qt_arch: ''
+          - name: macos-arm64
+            os: macos-latest
+            qt_arch: ''
+          - name: macos-x64
+            os: macos-13
+            qt_arch: ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: ${{ matrix.qt_arch }}
+          cache: true
+          cache-key-prefix: install-qt-${{ env.QT_VERSION }}
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ccache-${{ matrix.name }}
+          variant: ccache
+          max-size: 300M
+
+      - name: Configure (CMake + Ninja, Release)
+        shell: bash
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}"
+
+      - name: Build
+        shell: bash
+        run: cmake --build build --parallel
+
+      - name: Run unit tests (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cd build
+          export LD_LIBRARY_PATH="${QT_ROOT_DIR}/lib:${LD_LIBRARY_PATH}"
+          QT_QPA_PLATFORM=offscreen ctest --output-on-failure
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          windeployqt --release --no-translations build\bin\CodeForge.exe
+          Compress-Archive -Path build\bin\* -DestinationPath "dist/CodeForge-${{ env.CF_VERSION }}-${{ matrix.name }}.zip" -Force
+
+      - name: Package (Linux AppImage)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist AppDir/usr/bin
+          cp build/bin/CodeForge AppDir/usr/bin/CodeForge
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir "$PWD/AppDir" \
+            -e AppDir/usr/bin/CodeForge \
+            -i packaging/linux/codeforge.png \
+            -d packaging/linux/codeforge.desktop \
+            --plugin qt \
+            --output appimage
+          mv CodeForge-*.AppImage "dist/CodeForge-${{ env.CF_VERSION }}-${{ matrix.name }}.AppImage"
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          macdeployqt build/bin/CodeForge.app -verbose=1
+          ditto -c -k --keepParent build/bin/CodeForge.app "dist/CodeForge-${{ env.CF_VERSION }}-${{ matrix.name }}.zip"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodeForge-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        shell: bash
+        run: ls -la dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          body: |
+            **CodeForge ${{ github.ref_name }}** — lightweight native code editor (C++ / Qt 6)
+
+            ### Downloads
+            | Platform | File |
+            |----------|------|
+            | Windows 10/11 x64 | `CodeForge-*-windows-x64.zip` — extract & run `CodeForge.exe` (portable-friendly) |
+            | Linux x86_64 | `CodeForge-*-linux-x86_64.AppImage` — `chmod +x` then run |
+            | macOS Apple Silicon | `CodeForge-*-macos-arm64.zip` |
+            | macOS Intel | `CodeForge-*-macos-x64.zip` |
+
+            > macOS builds are unsigned — on first launch right-click → Open (Gatekeeper).
+            > Windows builds are portable: no installer required, settings live next to the exe when a `portable/` folder exists.

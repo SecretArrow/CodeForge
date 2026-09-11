@@ -1,0 +1,27 @@
+{
+  "id": "hc-dark", "name": "High Contrast Dark", "type": "dark",
+  "colors": {
+    "ui.background": "#000000", "ui.foreground": "#ffffff",
+    "ui.sidebar": "#0c0c0c", "ui.activityBar": "#000000",
+    "ui.statusBar": "#000000", "ui.statusBarText": "#ffffff",
+    "ui.tabBar": "#0c0c0c", "ui.tab.active": "#000000", "ui.tab.inactive": "#191919",
+    "ui.border": "#6fc3df", "ui.accent": "#f38518", "ui.accentText": "#000000",
+    "ui.input": "#000000", "ui.inputBorder": "#6fc3df",
+    "ui.list.hover": "#1f1f1f", "ui.list.selected": "#0f4a85",
+    "ui.button": "#0f4a85", "ui.buttonText": "#ffffff",
+    "ui.disabledText": "#7f7f7f", "ui.link": "#3794ff",
+    "ui.error": "#f48771", "ui.warning": "#ffd700", "ui.success": "#89d185",
+    "ui.panel": "#000000", "ui.tooltip": "#000000",
+    "editor.background": "#000000", "editor.foreground": "#ffffff",
+    "editor.selection": "#4b56a0", "editor.inactiveSelection": "#3b4141",
+    "editor.cursor": "#ffffff", "editor.lineNumber": "#7f7f7f", "editor.lineNumberActive": "#ffffff",
+    "editor.activeLine": "#101010", "editor.findMatch": "#613214", "editor.currentFindMatch": "#a07000",
+    "editor.indentGuide": "#404040", "editor.bracketMatch": "#6fc3df",
+    "syntax.keyword": "#569cd6", "syntax.control": "#c586c0", "syntax.string": "#ce9178",
+    "syntax.comment": "#7ca668", "syntax.number": "#b5cea8", "syntax.function": "#dcdcaa",
+    "syntax.type": "#4ec9b0", "syntax.variable": "#9cdcfe", "syntax.constant": "#4fc1ff",
+    "syntax.operator": "#ffffff", "syntax.preprocessor": "#c586c0", "syntax.tag": "#569cd6",
+    "syntax.attribute": "#9cdcfe", "syntax.property": "#9cdcfe", "syntax.heading": "#569cd6",
+    "syntax.link": "#3794ff"
+  }
+}
