@@ -57,6 +57,31 @@ jobs:
           cache: true
           cache-key-prefix: install-qt-${{ env.QT_VERSION }}
 
+      - name: Stub AGL framework (macOS SDK removed it, Qt still links it)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_PATH="$(xcrun --show-sdk-path)"
+          AGL_DIR="${SDK_PATH}/System/Library/Frameworks/AGL.framework"
+          if [ ! -e "${AGL_DIR}" ]; then
+            sudo mkdir -p "${AGL_DIR}/Versions/A"
+            sudo ln -sfn A "${AGL_DIR}/Versions/Current"
+            sudo ln -sfn Versions/A "${AGL_DIR}/Resources"
+            cat <<'EOF' | sudo tee "${AGL_DIR}/Versions/A/AGL.tbd" >/dev/null
+--- !tapi-tbd-v3
+archs:           [ x86_64, arm64 ]
+platform:        macosx
+install-name:    /System/Library/Frameworks/AGL.framework/Versions/A/AGL
+current-version: 65
+compatibility-version: 1
+exports:         []
+undefineds:      []
+EOF
+            sudo ln -sfn Versions/A/AGL.tbd "${AGL_DIR}/AGL"
+            echo "AGL stub created at ${AGL_DIR}"
+          fi
+
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:

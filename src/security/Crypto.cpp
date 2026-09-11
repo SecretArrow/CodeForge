@@ -36,7 +36,7 @@ bool cngApplyAad(InfoT& info, const QByteArray& aad)
 template <typename InfoT>
 bool cngApplyAad(InfoT&, const QByteArray&)
 {
-    Logger::instance().warning(QStringLiteral(
+    cf::Logger::instance().warning(QStringLiteral(
         "Crypto: CNG GCM AAD members unavailable in this Windows SDK; "
         "AAD-protected request rejected (fail closed)"));
     return false;
