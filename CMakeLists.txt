@@ -12,6 +12,23 @@ option(CODEFORGE_BUILD_TESTS "Build unit tests" ON)
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
 qt_standard_project_setup()
 
+# Apple removed the legacy AGL framework from recent macOS SDKs, but Qt still
+# adds "-framework AGL" to Qt6::Gui's interface link libraries, which fails at
+# link time ("framework 'AGL' not found"). Qt's macOS GL backend does not use
+# AGL at runtime, so drop it from the imported target's dependencies.
+if(APPLE)
+    get_target_property(_cf_gui_iface Qt6::Gui INTERFACE_LINK_LIBRARIES)
+    if(_cf_gui_iface)
+        list(FILTER _cf_gui_iface EXCLUDE REGEX "AGL")
+        set_target_properties(Qt6::Gui PROPERTIES INTERFACE_LINK_LIBRARIES "${_cf_gui_iface}")
+    endif()
+    get_target_property(_cf_gui_link Qt6::Gui IMPORTED_LINK_DEPENDENT_LIBRARIES)
+    if(_cf_gui_link)
+        list(FILTER _cf_gui_link EXCLUDE REGEX "AGL")
+        set_target_properties(Qt6::Gui PROPERTIES IMPORTED_LINK_DEPENDENT_LIBRARIES "${_cf_gui_link}")
+    endif()
+endif()
+
 find_package(OpenSSL QUIET)  # Linux AES-256-GCM backend (Windows uses CNG/BCrypt)
 
 file(GLOB_RECURSE CODEFORGE_SOURCES CONFIGURE_DEPENDS

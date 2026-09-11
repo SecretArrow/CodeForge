@@ -8,7 +8,7 @@ namespace cf {
 
 class TextDocument;
 class Workspace;
-class SymbolInfo;
+struct SymbolInfo;
 
 class Breadcrumbs : public QWidget {
     Q_OBJECT

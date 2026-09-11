@@ -11,7 +11,7 @@ class QWidget;
 
 namespace cf {
 
-class AppContext;
+struct AppContext;
 
 class IExtension {
 public:

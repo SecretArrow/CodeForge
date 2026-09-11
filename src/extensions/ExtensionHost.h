@@ -8,7 +8,7 @@
 
 namespace cf {
 
-class AppContext;
+struct AppContext;
 
 class ExtensionHost : public QObject {
     Q_OBJECT

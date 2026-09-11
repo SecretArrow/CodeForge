@@ -1,6 +1,5 @@
 [Desktop Entry]
 Type=Application
-Version=1.0.0
 Name=CodeForge
 GenericName=Code Editor
 Comment=A lightweight native code editor (C++ / Qt 6)
