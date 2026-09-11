@@ -66,10 +66,11 @@ jobs:
             # An empty Mach-O dylib is guaranteed to be recognized by ld,
             # unlike a hand-written .tbd (parser format quirks). CodeForge
             # and Qt's runtime GL backend do not call any AGL symbol.
-            printf '' | clang -x c - -dynamiclib -o "${AGL_DIR}/Versions/A/AGL" \
+            printf '' | clang -x c - -dynamiclib -o /tmp/AGLStub.dylib \
               -arch arm64 -arch x86_64 \
               -Wl,-install_name,/System/Library/Frameworks/AGL.framework/Versions/A/AGL \
               -Wl,-current_version,65 -Wl,-compatibility_version,1
+            sudo cp /tmp/AGLStub.dylib "${AGL_DIR}/Versions/A/AGL"
             sudo ln -sfn A "${AGL_DIR}/Versions/Current"
             sudo ln -sfn Versions/A/AGL "${AGL_DIR}/AGL"
             sudo ln -sfn Versions/A "${AGL_DIR}/Resources"
