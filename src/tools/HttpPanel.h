@@ -3,6 +3,7 @@
 // (basic/bearer), body, response viewer with timing/size and pretty JSON.
 // Requests can be saved/loaded as JSON in <workspace>/.codeforge/http/.
 // Offline-first: no request is made until the user presses Send.
+#include <QElapsedTimer>
 #include <QHash>
 #include <QNetworkRequest>
 #include <QWidget>

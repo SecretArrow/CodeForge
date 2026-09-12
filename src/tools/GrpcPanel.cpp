@@ -9,7 +9,9 @@
 #include <QFileInfo>
 #include <QPlainTextEdit>
 #include <QProcess>
+#include <QSplitter>
 #include <QStandardPaths>
+#include <QTabWidget>
 #include <QToolButton>
 #include <QVBoxLayout>
 
