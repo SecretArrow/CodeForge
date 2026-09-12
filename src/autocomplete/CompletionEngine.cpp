@@ -114,6 +114,11 @@ CompletionEngine::CompletionEngine(CodeEditor* editor, QObject* parent)
     connect(m_wordTimer, &QTimer::timeout, this, &CompletionEngine::onWordScanTimeout);
 
     if (m_editor) {
+        // auto-seed keywords from the document's language id (offline tables)
+        const QString lang = LanguageRegistry::instance().detectByPath(
+            m_editor->textDocument() ? m_editor->textDocument()->filePath() : QString());
+        if (!lang.isEmpty())
+            setKeywords(keywordsForLanguage(lang));
         m_editor->addKeyInterceptor(this);
         connect(m_editor, &QPlainTextEdit::textChanged, this, [this]() {
             if (m_popup->isVisible() && !m_applying)
@@ -494,6 +499,89 @@ void CompletionEngine::scanDocumentWords()
         b = b.next();
     }
     m_docWords = words;
+}
+
+QStringList CompletionEngine::keywordsForLanguage(const QString& languageId)
+{
+    using L = QStringList;
+    static const QHash<QString, L> table = {
+        { QStringLiteral("cpp"), L{ "alignas","alignof","auto","bool","break","case","catch","char","class",
+            "const","constexpr","const_cast","continue","decltype","default","delete","do","double",
+            "dynamic_cast","else","enum","explicit","export","extern","false","float","for","friend",
+            "goto","if","inline","int","long","mutable","namespace","new","noexcept","nullptr",
+            "operator","private","protected","public","register","reinterpret_cast","return","short",
+            "signed","sizeof","static","static_assert","static_cast","struct","switch","template","this",
+            "throw","true","try","typedef","typeid","typename","union","unsigned","using","virtual",
+            "void","volatile","wchar_t","while","override","final","std","vector","string","map","set" } },
+        { QStringLiteral("c"), L{ "auto","break","case","char","const","continue","default","do","double",
+            "else","enum","extern","float","for","goto","if","int","long","register","return","short",
+            "signed","sizeof","static","struct","switch","typedef","union","unsigned","void","volatile",
+            "while" } },
+        { QStringLiteral("python"), L{ "and","as","assert","async","await","break","class","continue","def",
+            "del","elif","else","except","False","finally","for","from","global","if","import","in","is",
+            "lambda","None","nonlocal","not","or","pass","raise","return","True","try","while","with",
+            "yield","print","len","range","enumerate","zip","open","dict","list","set","tuple" } },
+        { QStringLiteral("javascript"), L{ "async","await","break","case","catch","class","const","continue",
+            "debugger","default","delete","do","else","export","extends","finally","for","function","if",
+            "import","in","instanceof","let","new","null","of","return","static","super","switch","this",
+            "throw","true","false","try","typeof","undefined","var","void","while","yield" } },
+        { QStringLiteral("typescript"), L{ "abstract","any","as","async","await","boolean","break","case",
+            "catch","class","const","continue","declare","default","delete","do","else","enum","export",
+            "extends","finally","for","from","function","get","if","implements","import","in","instanceof",
+            "interface","is","keyof","let","namespace","never","new","null","number","object","of",
+            "private","protected","public","readonly","return","set","static","string","super","switch",
+            "this","throw","true","false","try","type","typeof","undefined","unknown","var","void","while" } },
+        { QStringLiteral("json"), L{ "true","false","null" } },
+        { QStringLiteral("html"), L{ "div","span","a","p","h1","h2","h3","ul","ol","li","table","tr","td",
+            "th","form","input","button","label","script","style","meta","link","img","section","header",
+            "footer","nav","main","article" } },
+        { QStringLiteral("css"), L{ "align-items","background","border","bottom","box-shadow","color",
+            "display","flex","flex-direction","font-size","font-weight","grid","height","justify-content",
+            "left","margin","max-width","min-width","opacity","padding","position","right","top","width",
+            "z-index","important","media","keyframes" } },
+        { QStringLiteral("cmake"), L{ "cmake_minimum_required","project","set","if","else","elseif","endif",
+            "foreach","endforeach","function","endfunction","macro","endmacro","add_executable",
+            "add_library","target_link_libraries","target_include_directories","target_compile_definitions",
+            "find_package","include","option","message","install","enable_testing","add_test",
+            "add_subdirectory","set_target_properties","qt_add_executable","qt_standard_project_setup" } },
+        { QStringLiteral("sql"), L{ "SELECT","FROM","WHERE","INSERT","INTO","VALUES","UPDATE","SET","DELETE",
+            "CREATE","TABLE","INDEX","VIEW","DROP","ALTER","ADD","JOIN","LEFT","RIGHT","INNER","OUTER",
+            "ON","GROUP","BY","ORDER","LIMIT","OFFSET","HAVING","DISTINCT","AS","AND","OR","NOT","NULL",
+            "PRIMARY","KEY","FOREIGN","REFERENCES","UNION","ALL","EXISTS","CASE","WHEN","THEN","ELSE","END" } },
+        { QStringLiteral("shell"), L{ "if","then","else","elif","fi","for","while","do","done","case","esac",
+            "function","return","export","local","echo","cd","set","unset","source","alias","shift",
+            "exit","trap","read","printf" } },
+        { QStringLiteral("java"), L{ "abstract","assert","boolean","break","byte","case","catch","char",
+            "class","const","continue","default","do","double","else","enum","extends","final","finally",
+            "float","for","goto","if","implements","import","instanceof","int","interface","long","native",
+            "new","package","private","protected","public","return","short","static","strictfp","super",
+            "switch","synchronized","this","throw","throws","transient","try","void","volatile","while" } },
+        { QStringLiteral("csharp"), L{ "abstract","as","async","await","base","bool","break","byte","case",
+            "catch","char","checked","class","const","continue","decimal","default","delegate","do","double",
+            "else","enum","event","explicit","extern","false","finally","fixed","float","for","foreach",
+            "goto","if","implicit","in","int","interface","internal","is","lock","long","namespace","new",
+            "null","object","operator","out","override","params","private","protected","public","readonly",
+            "ref","return","sbyte","sealed","short","sizeof","stackalloc","static","string","struct","switch",
+            "this","throw","true","try","typeof","uint","ulong","unchecked","unsafe","ushort","using","var",
+            "virtual","void","volatile","while" } },
+        { QStringLiteral("go"), L{ "break","case","chan","const","continue","default","defer","else",
+            "fallthrough","for","func","go","goto","if","import","interface","map","package","range",
+            "return","select","struct","switch","type","var","nil","make","new","len","cap","append" } },
+        { QStringLiteral("rust"), L{ "as","async","await","break","const","continue","crate","dyn","else",
+            "enum","extern","false","fn","for","if","impl","in","let","loop","match","mod","move","mut",
+            "pub","ref","return","self","Self","static","struct","super","trait","true","type","unsafe",
+            "use","where","while","Some","None","Ok","Err","Vec","String","Option","Result" } },
+        { QStringLiteral("php"), L{ "abstract","and","array","as","break","callable","case","catch","class",
+            "clone","const","continue","declare","default","do","echo","else","elseif","empty","enddeclare",
+            "endfor","endforeach","endif","endswitch","endwhile","extends","final","finally","fn","for",
+            "foreach","function","global","goto","if","implements","include","include_once","instanceof",
+            "insteadof","interface","isset","list","namespace","new","or","print","private","protected",
+            "public","require","require_once","return","static","switch","throw","trait","try","unset",
+            "use","var","while","xor","yield" } },
+        { QStringLiteral("markdown"), L{} },
+    };
+    auto it = table.find(languageId);
+    return it != table.end() ? it.value() : QStringList();
 }
 
 }  // namespace cf

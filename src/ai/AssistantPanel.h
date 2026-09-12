@@ -5,6 +5,7 @@
 // work). Remote endpoints are supported but show a clear warning that code
 // leaves the machine. Supports SSE streaming and editor-context actions
 // (Explain / Refactor / Fix / Tests) on the active selection.
+#include <QJsonArray>
 #include <QWidget>
 
 class QCheckBox;

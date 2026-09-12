@@ -61,7 +61,7 @@ SettingsDialog::SettingsDialog(SettingsManager* settings, KeybindManager* keybin
     m_categories->setFixedWidth(180);
     for (const QString& page : { tr("Editor"), tr("Appearance"), tr("Files"), tr("Search"), tr("Terminal"),
                                  tr("Keyboard"), tr("Security"), tr("Workspace"), tr("Extensions"),
-                                 tr("Performance"), tr("Updates") })
+                                 tr("Performance"), tr("Updates"), tr("AI"), tr("Tools") })
         m_categories->addItem(page);
     layout->addWidget(m_categories);
 
@@ -79,6 +79,8 @@ SettingsDialog::SettingsDialog(SettingsManager* settings, KeybindManager* keybin
     m_pages->addWidget(buildSchemaPage(QStringLiteral("Extensions")));
     m_pages->addWidget(buildSchemaPage(QStringLiteral("Performance")));
     m_pages->addWidget(buildSchemaPage(QStringLiteral("Updates")));
+    m_pages->addWidget(buildSchemaPage(QStringLiteral("AI")));
+    m_pages->addWidget(buildSchemaPage(QStringLiteral("Tools")));
 
     connect(m_categories, &QListWidget::currentRowChanged, this, &SettingsDialog::onPageChanged);
     m_categories->setCurrentRow(0);

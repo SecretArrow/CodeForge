@@ -9,34 +9,45 @@
 
 namespace cf {
 
+class AssistantPanel;
 class BuildManager;
 class Breadcrumbs;
 class BottomPanel;
 class CodeEditor;
 class CommandRegistry;
+class DatabasePanel;
+class DebugPanel;
 class DocumentManager;
 class EditorArea;
+class EmacsModal;
 class ExplorerPanel;
 class ExtensionHost;
 class ExtensionsPanel;
 class FileWatcher;
 class GitClient;
+class GrpcPanel;
+class HttpPanel;
 class KeybindManager;
 class LspManager;
 class OutlinePanel;
+class ProfilerPanel;
 class QuickOpen;
 class RecentManager;
+class RemotePanel;
 class SearchPanel;
 class SessionManager;
 class SettingsDialog;
 class SettingsManager;
 class StatusBar;
+class TaskRunner;
 class TextDocument;
 class ThemeManager;
 class Theme;
 class TodoPanel;
 class UpdateChecker;
+class VimModal;
 class Workspace;
+class QDockWidget;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -55,6 +66,13 @@ public:
     void openFile(const QString& path, bool preview = false, bool addToRecents = true);
     void showRecoveryDialog();
     void setZenMode(bool on);
+
+    // v1.2 integrations
+    void setupEditorServices();
+    void applyEditorModes();
+    void applyEditorModesTo(CodeEditor* ed);
+    void showCompareDialog(const QString& titleA, const QString& textA,
+                           const QString& titleB, const QString& textB);
 
     // session
     QJsonObject sessionState() const;
@@ -104,6 +122,9 @@ private:
     ExtensionHost* m_extensions = nullptr;
     LspManager* m_lsp = nullptr;
     UpdateChecker* m_updates = nullptr;
+    TaskRunner* m_tasks = nullptr;
+    VimModal* m_vim = nullptr;
+    EmacsModal* m_emacs = nullptr;
 
     // ui (owned)
     QToolBar* m_activityBar = nullptr;
@@ -122,6 +143,16 @@ private:
     QuickOpen* m_quickOpen = nullptr;
     QStackedWidget* m_centerStack = nullptr;
     QWidget* m_welcome = nullptr;
+
+    // v1.2 panels
+    DebugPanel* m_debug = nullptr;
+    RemotePanel* m_remote = nullptr;
+    HttpPanel* m_http = nullptr;
+    GrpcPanel* m_grpc = nullptr;
+    DatabasePanel* m_db = nullptr;
+    ProfilerPanel* m_profiler = nullptr;
+    AssistantPanel* m_ai = nullptr;
+    QDockWidget* m_aiDock = nullptr;
 
     // zen mode + misc
     bool m_quitConfirmed = false;

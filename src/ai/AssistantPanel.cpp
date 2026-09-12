@@ -1,6 +1,7 @@
 #include "ai/AssistantPanel.h"
 
 #include <QApplication>
+#include <QComboBox>
 #include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QJsonArray>
@@ -39,16 +40,16 @@ QString loadStoredApiKey()
 {
     const QByteArray blob = QByteArray::fromBase64(
         SettingsManager::instance().getString(QStringLiteral("ai.apiKeyEnc")).toUtf8());
-    if (blob.size() < Crypto::kNonceSize + Crypto::kTagSize)
+    if (blob.size() < sec::Crypto::kNonceSize + sec::Crypto::kTagSize)
         return QString();
     const sec::SecureBuffer key = sec::KeyStore::getOrCreateKey(QLatin1String(kApiKeyStore));
-    if (key.size() != Crypto::kKeySize)
+    if (key.size() != sec::Crypto::kKeySize)
         return QString();
-    const QByteArray nonce(reinterpret_cast<const char*>(blob.constData()), Crypto::kNonceSize);
-    const QByteArray cipherWithTag(blob.constData() + Crypto::kNonceSize,
-                                   blob.size() - Crypto::kNonceSize);
+    const QByteArray nonce(reinterpret_cast<const char*>(blob.constData()), sec::Crypto::kNonceSize);
+    const QByteArray cipherWithTag(blob.constData() + sec::Crypto::kNonceSize,
+                                   blob.size() - sec::Crypto::kNonceSize);
     QByteArray plain;
-    if (!Crypto::gcmDecrypt(key.data(), reinterpret_cast<const quint8*>(nonce.constData()),
+    if (!sec::Crypto::gcmDecrypt(key.data(), reinterpret_cast<const quint8*>(nonce.constData()),
                             cipherWithTag, QByteArray(), plain))
         return QString();
     return QString::fromUtf8(plain);
@@ -57,16 +58,16 @@ QString loadStoredApiKey()
 bool saveStoredApiKey(const QString& key)
 {
     sec::SecureBuffer keyBuf = sec::KeyStore::getOrCreateKey(QLatin1String(kApiKeyStore));
-    if (keyBuf.size() != Crypto::kKeySize)
+    if (keyBuf.size() != sec::Crypto::kKeySize)
         return false;
-    quint8 nonceRaw[Crypto::kNonceSize];
-    if (!Crypto::randomBytes(nonceRaw, Crypto::kNonceSize))
+    quint8 nonceRaw[sec::Crypto::kNonceSize];
+    if (!sec::Crypto::randomBytes(nonceRaw, sec::Crypto::kNonceSize))
         return false;
     const QByteArray plain = key.toUtf8();
     QByteArray out;   // ciphertext || tag
-    if (!Crypto::gcmEncrypt(keyBuf.data(), nonceRaw, plain, QByteArray(), out))
+    if (!sec::Crypto::gcmEncrypt(keyBuf.data(), nonceRaw, plain, QByteArray(), out))
         return false;
-    QByteArray blob(reinterpret_cast<const char*>(nonceRaw), Crypto::kNonceSize);
+    QByteArray blob(reinterpret_cast<const char*>(nonceRaw), sec::Crypto::kNonceSize);
     blob.append(out);
     SettingsManager::instance().set(QStringLiteral("ai.apiKeyEnc"),
                                     QString::fromUtf8(blob.toBase64()));

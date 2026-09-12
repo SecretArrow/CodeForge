@@ -4,6 +4,7 @@
 // Requests can be saved/loaded as JSON in <workspace>/.codeforge/http/.
 // Offline-first: no request is made until the user presses Send.
 #include <QHash>
+#include <QNetworkRequest>
 #include <QWidget>
 
 class QComboBox;

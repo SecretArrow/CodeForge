@@ -3,6 +3,8 @@
 // call stack, locals, console) wired to BreakpointStore for breakpoint sync.
 #include <QWidget>
 
+#include "debug/DebuggerClient.h"
+
 class QComboBox;
 class QLabel;
 class QLineEdit;
@@ -12,8 +14,6 @@ class QTreeWidget;
 class QToolButton;
 
 namespace cf {
-
-class DebuggerClient;
 
 class DebugPanel : public QWidget {
     Q_OBJECT

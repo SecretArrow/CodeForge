@@ -63,6 +63,7 @@ public:
     // pure, unit-tested helpers:
     static QString wordBeforeCursor(const QTextCursor& cursor);          // [A-Za-z0-9_]+ ending at cursor position
     static QVector<CompletionItem> filterRank(const QVector<CompletionItem>& items, const QString& prefix);
+    static QStringList keywordsForLanguage(const QString& languageId);   // compact per-language keyword table
 
     bool editorKeyPress(CodeEditor* editor, QKeyEvent* e) override;
 

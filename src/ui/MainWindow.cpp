@@ -5,6 +5,7 @@
 #include <QActionGroup>
 #include <QClipboard>
 #include <QCloseEvent>
+#include <QDir>
 #include <QFileDialog>
 #include <QInputDialog>
 #include <QJsonArray>
@@ -22,14 +23,22 @@
 
 #include "buildsys/BuildManager.h"
 #include "buildsys/BuildPanel.h"
+#include "ai/AssistantPanel.h"
+#include "autocomplete/CompletionEngine.h"
+#include "core/Breakpoints.h"
 #include "core/CommandRegistry.h"
 #include "core/DocumentManager.h"
 #include "core/FileUtils.h"
 #include "core/Logger.h"
+#include "debug/DebugPanel.h"
+#include "debug/DebuggerClient.h"
+#include "diff/DiffViewer.h"
 #include "editor/Breadcrumbs.h"
 #include "editor/CodeEditor.h"
 #include "editor/EditorArea.h"
 #include "editor/EditorGroup.h"
+#include "editor/EditorServices.h"
+#include "editormodes/VimEmacsModes.h"
 #include "app/UpdateChecker.h"
 #include "filesystem/EditorConfig.h"
 #include "filesystem/FileWatcher.h"
@@ -42,12 +51,20 @@
 #include "project/Workspace.h"
 #include "search/SearchPanel.h"
 #include "security/ClipboardGuard.h"
+#include "remote/RemotePanel.h"
 #include "settings/KeybindManager.h"
 #include "settings/SettingsDialog.h"
 #include "settings/SettingsManager.h"
+#include "snippets/SnippetStore.h"
+#include "snippets/SnippetsDialog.h"
 #include "syntax/LanguageRegistry.h"
+#include "tasks/TaskRunner.h"
 #include "terminal/TerminalPane.h"
 #include "themes/ThemeManager.h"
+#include "tools/DatabasePanel.h"
+#include "tools/GrpcPanel.h"
+#include "tools/HttpPanel.h"
+#include "tools/ProfilerPanel.h"
 #include "ui/BottomPanel.h"
 #include "ui/ExplorerPanel.h"
 #include "ui/ExtensionsPanel.h"
@@ -60,6 +77,8 @@
 #include "ui/WelcomePage.h"
 
 #include <QDesktopServices>
+#include <QDialog>
+#include <QDockWidget>
 #include <QToolTip>
 #include <QUrl>
 
@@ -88,10 +107,14 @@ MainWindow::MainWindow(QWidget* parent)
     m_extensions = new ExtensionHost(this);
     m_lsp = new LspManager(this);
     m_updates = new UpdateChecker(this);
+    m_tasks = new TaskRunner(this);
+    m_vim = new VimModal(this);
+    m_emacs = new EmacsModal(this);
 
     buildUi();
     buildMenus();
     registerCommands();
+    setupEditorServices();
 
     // Load overrides, theme, apply.
     m_keybinds->load();
@@ -155,6 +178,20 @@ void MainWindow::buildUi()
     m_sidebar->addWidget(m_extensionsPanel); // 5 Extensions
     m_sidebar->addWidget(m_todos);           // 6 TODO
 
+    // ---- v1.2 panels ----
+    m_debug = new DebugPanel(this);
+    m_remote = new RemotePanel(this);
+    m_http = new HttpPanel(this);
+    m_grpc = new GrpcPanel(this);
+    m_db = new DatabasePanel(this);
+    m_profiler = new ProfilerPanel(this);
+    m_sidebar->addWidget(m_debug);           // 7 Debug
+    m_sidebar->addWidget(m_remote);          // 8 Remote
+    m_bottom->addTab(m_http, Icons::icon(Icons::Name::Globe), tr("HTTP"));
+    m_bottom->addTab(m_grpc, Icons::icon(Icons::Name::Api), tr("gRPC"));
+    m_bottom->addTab(m_db, Icons::icon(Icons::Name::Database), tr("Database"));
+    m_bottom->addTab(m_profiler, Icons::icon(Icons::Name::Gauge), tr("Profiler"));
+
     // ---- Activity bar ----
     m_activityBar = new QToolBar(this);
     m_activityBar->setOrientation(Qt::Vertical);
@@ -172,6 +209,8 @@ void MainWindow::buildUi()
         { "Outline", Icons::Name::Outline, 4 },
         { "Extensions", Icons::Name::Puzzle, 5 },
         { "TODO", Icons::Name::Checklist, 6 },
+        { "Debug", Icons::Name::Bug, 7 },
+        { "Remote", Icons::Name::Globe, 8 },
     };
     auto* actionGroup = new QActionGroup(this);
     for (const Activity& a : activities) {
@@ -217,6 +256,14 @@ void MainWindow::buildUi()
     // ---- Status bar ----
     m_status = new StatusBar(this);
     setStatusBar(m_status);
+
+    // ---- AI Assistant dock (local models) ----
+    m_ai = new AssistantPanel(this);
+    m_aiDock = new QDockWidget(tr("AI Assistant"), this);
+    m_aiDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    m_aiDock->setWidget(m_ai);
+    addDockWidget(Qt::RightDockWidgetArea, m_aiDock);
+    m_aiDock->hide();
 
     // ---- Quick open ----
     m_quickOpen = new QuickOpen(this);
@@ -653,6 +700,98 @@ void MainWindow::registerCommands()
         m_updates->checkNow();
     });
 
+    // ---- v1.2 commands ----
+    auto showBottomTab = [this](QWidget* w) {
+        m_bottom->show();
+        m_bottom->setCurrentWidget(w);
+    };
+    add(QStringLiteral("view.http"), QStringLiteral("View"), QStringLiteral("HTTP Client"), QKeySequence(), [this, showBottomTab]() { showBottomTab(m_http); m_http->focusUrlEdit(); });
+    add(QStringLiteral("view.grpc"), QStringLiteral("View"), QStringLiteral("gRPC Client"), QKeySequence(), [this, showBottomTab]() { showBottomTab(m_grpc); });
+    add(QStringLiteral("view.database"), QStringLiteral("View"), QStringLiteral("Database Browser"), QKeySequence(), [this, showBottomTab]() { showBottomTab(m_db); });
+    add(QStringLiteral("view.profiler"), QStringLiteral("View"), QStringLiteral("Performance Profiler"), QKeySequence(), [this, showBottomTab]() { showBottomTab(m_profiler); });
+    add(QStringLiteral("view.debug"), QStringLiteral("View"), QStringLiteral("Debug Panel"), QKeySequence(QStringLiteral("Ctrl+Shift+D")), [this]() { m_sidebar->setCurrentIndex(7); m_sidebar->show(); });
+    add(QStringLiteral("view.remote"), QStringLiteral("View"), QStringLiteral("Remote (SSH)"), QKeySequence(), [this]() { m_sidebar->setCurrentIndex(8); m_sidebar->show(); });
+    add(QStringLiteral("view.aiAssistant"), QStringLiteral("View"), QStringLiteral("Toggle AI Assistant"), QKeySequence(QStringLiteral("Ctrl+Shift+A")), [this]() {
+        m_aiDock->setVisible(!m_aiDock->isVisible());
+    });
+    add(QStringLiteral("tasks.run"), QStringLiteral("Tasks"), QStringLiteral("Run Task..."), QKeySequence(), [this]() {
+        const QVector<TaskDef> tasks = m_tasks->tasks();
+        if (tasks.isEmpty()) {
+            if (QMessageBox::question(this, tr("Tasks"),
+                    tr("No tasks found. Create a tasks.json template in the workspace?"))
+                == QMessageBox::Yes)
+                TaskRunner::writeTemplate(m_workspace->rootPath());
+            return;
+        }
+        QStringList labels;
+        for (const TaskDef& t : tasks)
+            labels << t.label;
+        bool ok = false;
+        const QString pick = QInputDialog::getItem(this, tr("Run Task"), tr("Task:"), labels, 0, false, &ok);
+        if (ok && !pick.isEmpty()) {
+            m_bottom->show();
+            m_tasks->runTask(pick);
+        }
+    });
+    add(QStringLiteral("tasks.cancel"), QStringLiteral("Tasks"), QStringLiteral("Cancel Running Task"), QKeySequence(), [this]() { m_tasks->cancel(); });
+    add(QStringLiteral("snippets.edit"), QStringLiteral("Snippets"), QStringLiteral("Edit Snippets"), QKeySequence(), [this]() {
+        SnippetsDialog dialog(this);
+        dialog.exec();
+    });
+    add(QStringLiteral("editor.vimMode"), QStringLiteral("Editor"), QStringLiteral("Toggle Vim Mode"), QKeySequence(), [this]() {
+        const bool on = !m_settings->getBool(QStringLiteral("editor.vimMode"));
+        m_settings->set(QStringLiteral("editor.emacsMode"), false);
+        m_settings->set(QStringLiteral("editor.vimMode"), on);
+    });
+    add(QStringLiteral("editor.emacsMode"), QStringLiteral("Editor"), QStringLiteral("Toggle Emacs Mode"), QKeySequence(), [this]() {
+        const bool on = !m_settings->getBool(QStringLiteral("editor.emacsMode"));
+        m_settings->set(QStringLiteral("editor.vimMode"), false);
+        m_settings->set(QStringLiteral("editor.emacsMode"), on);
+    });
+    add(QStringLiteral("file.compare"), QStringLiteral("File"), QStringLiteral("Compare Files..."), QKeySequence(), [this]() {
+        const QString a = QFileDialog::getOpenFileName(this, tr("Compare — Side A"));
+        if (a.isEmpty()) return;
+        const QString b = QFileDialog::getOpenFileName(this, tr("Compare — Side B"));
+        if (b.isEmpty()) return;
+        QByteArray ba, bb;
+        fs::readAll(a, ba);
+        fs::readAll(b, bb);
+        const enc::Info ea = enc::detect(ba);
+        const enc::Info eb = enc::detect(bb);
+        showCompareDialog(a, enc::decode(ba, ea), b, enc::decode(bb, eb));
+    });
+    add(QStringLiteral("file.compareWithHead"), QStringLiteral("File"), QStringLiteral("Compare Active File with Git HEAD"), QKeySequence(), [this]() {
+        TextDocument* doc = activeDocument();
+        if (!doc || doc->filePath().isEmpty()) return;
+        const QString root = m_workspace->rootPath();
+        if (root.isEmpty() || !m_git->isRepository()) {
+            QMessageBox::information(this, tr("Compare"), tr("Active file is not inside a git repository."));
+            return;
+        }
+        const QString rel = QDir(root).relativeFilePath(doc->filePath());
+        QProcess git(this);
+        git.setWorkingDirectory(root);
+        git.start(QStringLiteral("git"), { QStringLiteral("show"), QStringLiteral("HEAD:") + rel });
+        git.waitForFinished(8000);
+        const QString headText = git.exitCode() == 0
+                                     ? QString::fromUtf8(git.readAllStandardOutput())
+                                     : QString();
+        QByteArray cur;
+        fs::readAll(doc->filePath(), cur);
+        const enc::Info ec = enc::detect(cur);
+        showCompareDialog(rel + QStringLiteral(" (HEAD)"), headText,
+                          rel + QStringLiteral(" (working copy)"), enc::decode(cur, ec));
+    });
+    add(QStringLiteral("debug.start"), QStringLiteral("Debug"), QStringLiteral("Start Debugging"), QKeySequence(QStringLiteral("F5")), [this]() {
+        m_sidebar->setCurrentIndex(7); m_sidebar->show();
+        m_debug->onStart();
+    });
+    add(QStringLiteral("debug.continue"), QStringLiteral("Debug"), QStringLiteral("Continue"), QKeySequence(), [this]() { m_debug->onContinue(); });
+    add(QStringLiteral("debug.stop"), QStringLiteral("Debug"), QStringLiteral("Stop Debugging"), QKeySequence(QStringLiteral("Ctrl+Shift+F5")), [this]() { m_debug->onStop(); });
+    add(QStringLiteral("debug.stepOver"), QStringLiteral("Debug"), QStringLiteral("Step Over"), QKeySequence(QStringLiteral("F10")), [this]() { m_debug->onStepOver(); });
+    add(QStringLiteral("debug.stepInto"), QStringLiteral("Debug"), QStringLiteral("Step Into"), QKeySequence(QStringLiteral("F11")), [this]() { m_debug->onStepInto(); });
+    add(QStringLiteral("debug.stepOut"), QStringLiteral("Debug"), QStringLiteral("Step Out"), QKeySequence(QStringLiteral("Shift+F11")), [this]() { m_debug->onStepOut(); });
+
     // Wire registered shortcuts.
     for (const Command* cmd : m_commands->commands()) {
         const QKeySequence seq = m_keybinds->effective(cmd->id);
@@ -971,6 +1110,104 @@ void MainWindow::connectSubsystems()
         if (g && g->currentEditor()) g->currentEditor()->gotoLine(line, col);
     });
 
+    // ---- v1.2: tasks, snippets store, debugger, remote, AI ----
+    connect(m_workspace, &Workspace::rootChanged, m_tasks, &TaskRunner::setWorkspaceRoot);
+    connect(m_workspace, &Workspace::rootChanged, this, [this](const QString& root) {
+        SnippetStore::instance().setWorkspaceRoot(root);
+        if (!root.isEmpty())
+            m_debug->addProgramSuggestion(m_build->detectExecutable());
+    });
+    connect(m_tasks, &TaskRunner::taskOutput, this, [this](const QString& label, const QString& line) {
+        m_bottom->appendOutput(QStringLiteral("Tasks"),
+                               QStringLiteral("[%1] %2").arg(label, line));
+    });
+    connect(m_tasks, &TaskRunner::taskFinished, this, [this](const QString& label, int code) {
+        m_bottom->appendOutput(QStringLiteral("Tasks"),
+                               QStringLiteral("[CodeForge] '%1' finished (exit %2)").arg(label).arg(code));
+        statusBar()->showMessage(tr("Task '%1' finished (exit %2)").arg(label).arg(code), 5000);
+    });
+    connect(m_build, &BuildManager::buildFinished, this, [this](bool ok, int, int) {
+        if (ok)
+            m_debug->addProgramSuggestion(m_build->detectExecutable());
+    });
+    connect(m_debug, &DebugPanel::stoppedAt, this, [this](const QString& file, int line) {
+        openFile(file, false, false);
+        EditorGroup* g = m_editorArea->activeGroup();
+        if (g && g->currentEditor()) g->currentEditor()->gotoLine(line, 0);
+    });
+    connect(m_remote, &RemotePanel::remoteFileFetched, this, [this](const QString& remotePath, const QString& local) {
+        openFile(local, false, false);
+        statusBar()->showMessage(tr("Remote file %1 opened — Ctrl+S pushes it back over SSH")
+                                     .arg(remotePath), 6000);
+    });
+    connect(m_documents, &DocumentManager::documentSaved, this, [this](TextDocument* doc) {
+        if (!doc)
+            return;
+        const RemotePanel::RemoteFile f = m_remote->remoteFileFor(doc->filePath());
+        if (f.valid) {
+            QString err;
+            if (!m_remote->saveBack(f, &err))
+                QMessageBox::warning(this, tr("Remote save"), err);
+        }
+    });
+    m_ai->setEditorContextProvider([this](int* selStartLine) -> QString {
+        CodeEditor* ed = activeEditor();
+        TextDocument* doc = activeDocument();
+        if (!ed || !doc)
+            return QString();
+        QTextCursor c = ed->textCursor();
+        if (c.hasSelection()) {
+            if (selStartLine)
+                *selStartLine = c.blockNumber();
+            return c.selectedText().replace(QChar(0x2029), QLatin1Char('\n'));
+        }
+        if (selStartLine)
+            *selStartLine = -1;
+        return doc->document()->toPlainText();
+    });
+    m_ai->setInsertCallback([this](const QString& text) {
+        if (CodeEditor* ed = activeEditor())
+            ed->textCursor().insertText(text);
+    });
+
+    // Vim/Emacs mode feedback.
+    connect(m_vim, &VimModal::modeChanged, this, [this](CodeEditor*, const QString& label) {
+        statusBar()->showMessage(label.isEmpty() ? QString()
+                                                 : QStringLiteral("Vim: %1").arg(label));
+    });
+    connect(m_vim, &VimModal::searchRequested, this, [this](CodeEditor*, const QString&) {
+        showFind(false);
+    });
+    connect(m_vim, &VimModal::commandRequested, this, [this](CodeEditor*, const QString& raw) {
+        const QString cmd = raw.trimmed().startsWith(QLatin1Char(':'))
+                                ? raw.trimmed().mid(1)
+                                : raw.trimmed();
+        if (cmd == QLatin1String("w") || cmd == QLatin1String("wa")) {
+            m_documents->saveAllModified();
+        } else if (cmd == QLatin1String("q") || cmd == QLatin1String("q!")) {
+            close();
+        } else if (cmd == QLatin1String("wq") || cmd == QLatin1String("x")) {
+            m_documents->saveAllModified();
+            close();
+        } else {
+            bool ok = false;
+            const int line = cmd.toInt(&ok);
+            if (ok) {
+                EditorGroup* g = m_editorArea->activeGroup();
+                if (g && g->currentEditor()) g->currentEditor()->gotoLine(line - 1, 0);
+            }
+        }
+    });
+    connect(m_emacs, &EmacsModal::commandRequested, this, [this](CodeEditor*, const QString& cmd) {
+        if (cmd == QLatin1String("find"))
+            showFind(false);
+        else if (cmd == QLatin1String("save"))
+            m_documents->saveAllModified();
+    });
+    connect(m_emacs, &EmacsModal::statusMessage, this, [this](CodeEditor*, const QString& msg) {
+        statusBar()->showMessage(msg.isEmpty() ? QStringLiteral("Emacs mode off") : msg, msg.isEmpty() ? 2000 : 0);
+    });
+
     setupUpdateChecker();
 }
 
@@ -1092,6 +1329,8 @@ void MainWindow::applySettingsChanges(const QString& key)
     if (key == QLatin1String("appearance.theme")) {
         m_themes->setTheme(m_settings->getString(QStringLiteral("appearance.theme")));
         applyThemeNow();
+    } else if (key == QLatin1String("editor.vimMode") || key == QLatin1String("editor.emacsMode")) {
+        applyEditorModes();
     } else if (key.startsWith(QStringLiteral("editor."))) {
         // Reapply editor settings to every open editor.
         for (EditorGroup* g : m_editorArea->groups()) {
@@ -1104,6 +1343,60 @@ void MainWindow::applySettingsChanges(const QString& key)
 }
 
 // ---------------- open helpers ----------------
+
+// ---- v1.2: per-editor services (completion, snippets, modal modes) ----
+void MainWindow::setupEditorServices()
+{
+    EditorServices::instance().addInitHook([this](CodeEditor* ed) {
+        if (m_settings->getBool(QStringLiteral("completion.enabled"))) {
+            auto* engine = new CompletionEngine(ed, ed);
+            const QString lang = LanguageRegistry::instance().detectByPath(
+                ed->textDocument() ? ed->textDocument()->filePath() : QString());
+            engine->setKeywords(CompletionEngine::keywordsForLanguage(lang));
+            engine->setSnippets(SnippetStore::instance().completionItems(lang));
+        }
+        applyEditorModesTo(ed);
+    });
+}
+
+void MainWindow::applyEditorModesTo(CodeEditor* ed)
+{
+    const bool vim = m_settings->getBool(QStringLiteral("editor.vimMode"));
+    const bool emacs = m_settings->getBool(QStringLiteral("editor.emacsMode"));
+    if (vim)
+        m_vim->attachTo(ed);
+    else
+        m_vim->detachFrom(ed);
+    if (emacs)
+        m_emacs->attachTo(ed);
+    else
+        m_emacs->detachFrom(ed);
+}
+
+void MainWindow::applyEditorModes()
+{
+    for (EditorGroup* g : m_editorArea->groups()) {
+        for (TextDocument* d : g->documents()) {
+            if (CodeEditor* ed = g->editorForDoc(d))
+                applyEditorModesTo(ed);
+        }
+    }
+}
+
+void MainWindow::showCompareDialog(const QString& titleA, const QString& textA,
+                                   const QString& titleB, const QString& textB)
+{
+    auto* dlg = new QDialog(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setWindowTitle(tr("Compare — %1 / %2").arg(QFileInfo(titleA).fileName(),
+                                                    QFileInfo(titleB).fileName()));
+    dlg->resize(1100, 700);
+    auto* layout = new QVBoxLayout(dlg);
+    auto* viewer = new DiffViewer(dlg);
+    viewer->setContents(titleA, textA, titleB, textB);
+    layout->addWidget(viewer);
+    dlg->show();
+}
 
 void MainWindow::openFolderDialog()
 {
