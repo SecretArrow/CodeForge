@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(CodeForge VERSION 1.1.0 LANGUAGES CXX)
+project(CodeForge VERSION 1.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,7 +9,7 @@ set(CMAKE_AUTOUIC ON)
 
 option(CODEFORGE_BUILD_TESTS "Build unit tests" ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network Sql)
 qt_standard_project_setup()
 
 # Apple removed the legacy AGL framework from recent macOS SDKs, but Qt still
@@ -45,17 +45,18 @@ file(GLOB_RECURSE CODEFORGE_SOURCES CONFIGURE_DEPENDS
 
 qt_add_library(CodeForgeLib STATIC EXCLUDE_FROM_ALL ${CODEFORGE_SOURCES})
 target_include_directories(CodeForgeLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(CodeForgeLib PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Network)
+target_link_libraries(CodeForgeLib PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Network Qt6::Sql)
 
 if(WIN32)
     target_link_libraries(CodeForgeLib PUBLIC bcrypt)   # Windows CNG (AES-256-GCM, random)
+    target_link_libraries(CodeForgeLib PUBLIC psapi)   # process metrics (profiler)
     target_compile_definitions(CodeForgeLib PUBLIC UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 elseif(OPENSSL_FOUND)
     target_link_libraries(CodeForgeLib PUBLIC OpenSSL::Crypto)
     target_compile_definitions(CodeForgeLib PUBLIC CF_HAVE_OPENSSL)
 endif()
 
-target_compile_definitions(CodeForgeLib PRIVATE CF_APP_VERSION="1.1.0" QT_MESSAGELOGCONTEXT)
+target_compile_definitions(CodeForgeLib PRIVATE CF_APP_VERSION="1.2.0" QT_MESSAGELOGCONTEXT)
 
 if(MSVC)
     target_compile_options(CodeForgeLib PRIVATE /W4 /permissive- /Zc:__cplusplus /utf-8)

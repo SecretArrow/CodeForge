@@ -16,7 +16,7 @@ struct VimModal::State {
     Mode mode = Mode::Normal;
     int count = 0;              // pending count
     QChar pendingOp;            // 'd', 'c', 'y' awaiting a motion
-    QChar pendingG = 0;         // 'g' awaiting 'g'
+    QChar pendingG;             // 'g' awaiting 'g'
     QString registerText;       // yank/delete register
     bool registerIsLine = false;
     QString lastSearch;
@@ -91,7 +91,7 @@ QString VimModal::pendingLabelFor(CodeEditor* editor) const
             label += QString::number(st->count);
         if (!st->pendingOp.isNull())
             label += st->pendingOp;
-        if (st->pendingG != 0)
+        if (!st->pendingG.isNull())
             label += st->pendingG;
         return label;
     }
@@ -102,7 +102,7 @@ void VimModal::setMode(CodeEditor* editor, State& st, Mode m)
 {
     st.mode = m;
     st.pendingOp = QChar();
-    st.pendingG = 0;
+    st.pendingG = QChar();
     st.count = 0;
     emit modeChanged(editor, modeLabelFor(editor));
 }
@@ -203,8 +203,8 @@ bool VimModal::editorKeyPress(CodeEditor* editor, QKeyEvent* e)
     }
 
     // ---- pending 'g' (gg = top of buffer) ----
-    if (st.pendingG != 0) {
-        st.pendingG = 0;
+    if (!st.pendingG.isNull()) {
+        st.pendingG = QChar();
         if (key == Qt::Key_G) {
             QTextCursor c = editor->textCursor();
             c.movePosition(QTextCursor::Start);
@@ -501,7 +501,7 @@ bool VimModal::editorKeyPress(CodeEditor* editor, QKeyEvent* e)
 
     if (key == Qt::Key_Escape) {
         st.pendingOp = QChar();
-        st.pendingG = 0;
+        st.pendingG = QChar();
         st.count = 0;
         editor->clearExtraCursors();
         emit modeChanged(editor, modeLabelFor(editor));

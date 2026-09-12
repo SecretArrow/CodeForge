@@ -41,7 +41,7 @@ private:
     void setMode(CodeEditor* editor, State& st, Mode m);
     void cleanupDestroyed();
 
-    QHash<QPointer<CodeEditor>, State*> m_states;
+    QHash<CodeEditor*, State*> m_states;
 };
 
 class EmacsModal : public QObject, public EditorKeyInterceptor {
@@ -61,8 +61,8 @@ signals:
 
 private:
     QStringList m_killRing;                       // C-k / M-w push, C-y pops
-    QSet<QPointer<CodeEditor>> m_attached;
-    QSet<QPointer<CodeEditor>> m_markSet;         // C-Space transient mark mode
+    QSet<CodeEditor*> m_attached;
+    QSet<CodeEditor*> m_markSet;                  // C-Space transient mark mode
 };
 
 }  // namespace cf

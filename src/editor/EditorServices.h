@@ -4,16 +4,18 @@
 // register an init hook at startup instead of EditorGroup depending on each
 // feature directly (keeps the dependency direction editor -> features off).
 #include <functional>
-
+#include <QList>
 #include <QString>
 
-class CodeEditor;   // fwd (global)
+namespace cf {
+class CodeEditor;
+}
 
 namespace cf {
 
 class EditorServices {
 public:
-    using Hook = std::function<void(CodeEditor*)>;
+    using Hook = std::function<void(cf::CodeEditor*)>;
 
     static EditorServices& instance();
 
@@ -21,7 +23,7 @@ public:
     void addInitHook(Hook hook);
 
     // Called by EditorGroup::createEditor().
-    void notifyEditorCreated(CodeEditor* editor);
+    void notifyEditorCreated(cf::CodeEditor* editor);
 
 private:
     EditorServices() = default;
