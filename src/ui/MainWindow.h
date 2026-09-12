@@ -7,6 +7,8 @@
 #include <QStackedWidget>
 #include <QTimer>
 
+class QDockWidget;   // global (Qt)
+
 namespace cf {
 
 class AssistantPanel;
@@ -47,7 +49,6 @@ class TodoPanel;
 class UpdateChecker;
 class VimModal;
 class Workspace;
-class QDockWidget;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
