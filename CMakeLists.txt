@@ -59,6 +59,10 @@ endif()
 target_compile_definitions(CodeForgeLib PRIVATE CF_APP_VERSION="1.2.0" QT_MESSAGELOGCONTEXT)
 
 if(MSVC)
+    # The manifest is embedded through src/app/codeforge.rc (asInvoker, UTF-8
+    # code page, DPI awareness). The linker's auto-generated manifest would
+    # collide with it (CVT1100 duplicate resource).
+    target_link_options(CodeForge PRIVATE "/MANIFEST:NO")
     target_compile_options(CodeForgeLib PRIVATE /W4 /permissive- /Zc:__cplusplus /utf-8)
 else()
     target_compile_options(CodeForgeLib PRIVATE -Wall -Wextra -Wpedantic)

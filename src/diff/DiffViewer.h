@@ -47,8 +47,6 @@ private slots:
     void onCopyRight();
     void onCopyLeft();
     void onScrollMoved(int value);
-    void onCopyPathA();
-    void onCopyPathB();
 
 private:
     void rebuild();               // re-run the diff on current texts

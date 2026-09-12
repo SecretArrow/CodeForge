@@ -129,6 +129,11 @@ void DatabasePanel::openDatabasePath(const QString& path)
                                 .arg(db.tables().size()));
 }
 
+void DatabasePanel::onCloseClicked()
+{
+    closeDatabase();
+}
+
 void DatabasePanel::onOpenClicked()
 {
     const QString path = QFileDialog::getOpenFileName(this, tr("Open SQLite database"), QString(),
