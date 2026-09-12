@@ -110,7 +110,7 @@ jobs:
           export LD_LIBRARY_PATH="${QT_ROOT_DIR}/lib:${LD_LIBRARY_PATH}"
           QT_QPA_PLATFORM=offscreen ctest --output-on-failure
 
-      - name: Package (Windows: deploy, sign, installer, portable zip)
+      - name: "Package (Windows: deploy, sign, installer, portable zip)"
         if: runner.os == 'Windows'
         shell: pwsh
         env:
@@ -130,6 +130,10 @@ jobs:
           if ($env:CODESIGN_PFX_B64) {
             [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CODESIGN_PFX_B64))
             Write-Host "Signing with repository-provided certificate"
+            # Publish the public half so users can trust the publisher.
+            $x509 = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+            $x509.Import($pfxPath, $env:CODESIGN_PFX_PASSWORD, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+            [IO.File]::WriteAllBytes($cerPath, $x509.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
           } else {
             Write-Host "No CODESIGN_PFX secret - generating a self-signed project certificate"
             $cert = New-SelfSignedCertificate -Type CodeSigningCert `
