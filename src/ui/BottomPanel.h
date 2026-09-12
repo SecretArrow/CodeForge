@@ -6,6 +6,7 @@
 
 #include "buildsys/BuildManager.h"
 #include "lsp/LanguageService.h"
+#include "ui/Icons.h"
 
 class QPlainTextEdit;
 class QTreeWidget;

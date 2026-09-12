@@ -2,6 +2,7 @@
 
 #include <QAbstractScrollArea>
 #include <QApplication>
+#include <QClipboard>
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QKeyEvent>

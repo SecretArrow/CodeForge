@@ -7,11 +7,10 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QProcess>
+#include <QStringList>
 #include <QVector>
 
 #include "lsp/LanguageService.h"
-
-class QStringList;
 
 namespace cf {
 
