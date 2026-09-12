@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <functional>
 
+#include "core/Breakpoints.h"
 #include "editor/Minimap.h"
 #include "editor/MultiCursorOps.h"
 #include "filesystem/EditorConfig.h"
@@ -149,10 +150,17 @@ void LineNumberArea::paintEvent(QPaintEvent* event)
 
 void LineNumberArea::mousePressEvent(QMouseEvent* event)
 {
-    // Click on the fold zone toggles folding for that line.
+    // Fold zone (right edge) toggles folding; the rest of the margin toggles a
+    // breakpoint for that line (VS Code behaviour).
     const QTextBlock block = m_editor->blockForPos(event->pos().y());
-    if (block.isValid() && m_editor->m_showFolding)
+    if (!block.isValid()) return;
+    const int foldZoneStart = m_editor->marginWidth() - 14;
+    if (m_editor->m_showFolding && event->pos().x() >= foldZoneStart) {
         m_editor->toggleFold(block.blockNumber());
+        return;
+    }
+    if (!m_editor->m_doc->isUntitled())
+        BreakpointStore::instance().toggle(m_editor->m_doc->filePath(), block.blockNumber());
 }
 
 // ---------------- CodeEditor ----------------
@@ -186,6 +194,49 @@ CodeEditor::CodeEditor(TextDocument* doc, QWidget* parent)
     updateMarginWidth();
     onCursorMoved();
     rebuildBracketDepths();
+    refreshBreakpoints();
+}
+
+void CodeEditor::refreshBreakpoints()
+{
+    if (!m_doc || m_doc->isUntitled()) return;
+    if (!m_breakpointsWired) {
+        m_breakpointsWired = true;
+        connect(&BreakpointStore::instance(), &BreakpointStore::changed, this,
+                &CodeEditor::refreshBreakpoints, Qt::QueuedConnection);
+    }
+    const QSet<int> lines = BreakpointStore::instance().linesFor(m_doc->filePath());
+    if (lines != m_breakpoints) {
+        m_breakpoints = lines;
+        m_margin->update();
+    }
+}
+
+void CodeEditor::addKeyInterceptor(EditorKeyInterceptor* i)
+{
+    if (i && !m_interceptors.contains(i)) m_interceptors.append(i);
+}
+
+void CodeEditor::removeKeyInterceptor(EditorKeyInterceptor* i)
+{
+    m_interceptors.removeAll(i);
+}
+
+void CodeEditor::setInlineSuggestion(const QString& text)
+{
+    if (m_inlineSuggestion == text) return;
+    m_inlineSuggestion = text;
+    viewport()->update();
+}
+
+void CodeEditor::acceptInlineSuggestion()
+{
+    if (m_inlineSuggestion.isEmpty() || isReadOnly()) return;
+    QTextCursor c = textCursor();
+    c.insertText(m_inlineSuggestion);
+    m_inlineSuggestion.clear();
+    setTextCursor(c);
+    viewport()->update();
 }
 
 void CodeEditor::applySettings()
@@ -297,6 +348,9 @@ void CodeEditor::applyTheme(const Theme& t)
     m_bracketColors[1] = t.color(QStringLiteral("editor.bracketColor2"), QColor(0x4e, 0xc9, 0xb0));
     m_bracketColors[2] = t.color(QStringLiteral("editor.bracketColor3"), QColor(0xc5, 0x86, 0xc0));
     for (QColor& c : m_bracketColors) c.setAlpha(52);
+    m_breakpointColor = t.color(QStringLiteral("editor.breakpoint"), QColor(0xe5, 0x14, 0x00));
+    m_ghostColor = t.color(QStringLiteral("editor.inlineSuggestion"), QColor(0x88, 0x88, 0x88));
+    m_ghostColor.setAlpha(190);
 
     QPalette pal = viewport()->palette();
     pal.setColor(QPalette::Base, t.editorBackground());
@@ -360,13 +414,22 @@ void CodeEditor::paintMargin(QPaintEvent* e)
     const int currentLine = textCursor().blockNumber();
 
     while (block.isValid() && top <= e->rect().bottom()) {
+        if (block.isVisible() && m_breakpoints.contains(blockNumber)) {
+            // Breakpoint dot at the left edge.
+            p.save();
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setPen(Qt::NoPen);
+            p.setBrush(m_breakpointColor);
+            p.drawEllipse(QPoint(6, top + fm.height() / 2), 4, 4);
+            p.restore();
+        }
         if (block.isVisible() && m_bookmarks.contains(blockNumber)) {
-            // Bookmark glyph at the left edge.
+            // Bookmark glyph (shifted right when a breakpoint dot is shown).
             p.save();
             p.setRenderHint(QPainter::Antialiasing);
             p.setPen(Qt::NoPen);
             p.setBrush(m_diagnosticInfoColor);
-            const int mx = 2;
+            const int mx = m_breakpoints.contains(blockNumber) ? 12 : 2;
             const int my = top + 2;
             const int mw = 6;
             const int mh = qMax(4, fm.height() - 4);
@@ -1110,6 +1173,15 @@ bool CodeEditor::handleAutoClose(QKeyEvent* e)
 
 void CodeEditor::keyPressEvent(QKeyEvent* e)
 {
+    // Registered interceptors (completion popup, Vim/Emacs, inline AI) get the
+    // event first; the most recently registered wins.
+    for (int i = m_interceptors.size() - 1; i >= 0; --i) {
+        if (m_interceptors.at(i)->editorKeyPress(this, e)) {
+            e->accept();
+            return;
+        }
+    }
+
     // Multi-cursor editing takes precedence when extra cursors exist.
     if (!m_extraCursors.isEmpty() && !isReadOnly()) {
         if (e->key() == Qt::Key_Escape) {
@@ -1167,10 +1239,18 @@ void CodeEditor::keyPressEvent(QKeyEvent* e)
     if (e->key() == Qt::Key_Escape) {
         clearExtraCursors();
         m_occurrenceNeedle.clear();
+        if (!m_inlineSuggestion.isEmpty()) {
+            m_inlineSuggestion.clear();
+            viewport()->update();
+        }
     }
 
     if (handleAutoClose(e)) return;
 
+    if (e->key() == Qt::Key_Tab && !m_inlineSuggestion.isEmpty()) {
+        acceptInlineSuggestion();
+        return;
+    }
     if (e->key() == Qt::Key_Tab || e->key() == Qt::Key_Backtab) {
         indentSelection(e->key() == Qt::Key_Tab);
         return;
@@ -1195,14 +1275,22 @@ void CodeEditor::mousePressEvent(QMouseEvent* e)
 void CodeEditor::paintEvent(QPaintEvent* e)
 {
     QPlainTextEdit::paintEvent(e);
-    if (m_extraCursors.isEmpty()) return;
-
     QPainter p(viewport());
-    const int w = qMax(1, cursorWidth());
-    for (const QTextCursor& c : m_extraCursors) {
-        const QRect r = cursorRect(c);
-        if (r.bottom() < -50 || r.top() > height() + 50) continue;
-        p.fillRect(r.x(), r.y(), w, r.height(), m_caretColor);
+    if (!m_extraCursors.isEmpty()) {
+        const int w = qMax(1, cursorWidth());
+        for (const QTextCursor& c : m_extraCursors) {
+            const QRect r = cursorRect(c);
+            if (r.bottom() < -50 || r.top() > height() + 50) continue;
+            p.fillRect(r.x(), r.y(), w, r.height(), m_caretColor);
+        }
+    }
+    // AI inline suggestion ghost text right after the caret.
+    if (!m_inlineSuggestion.isEmpty() && m_extraCursors.isEmpty()) {
+        const QRect r = cursorRect();
+        if (r.isValid() && r.top() < height() && r.bottom() > 0) {
+            p.setPen(m_ghostColor);
+            p.drawText(r.left(), r.top() + fontMetrics().ascent(), m_inlineSuggestion);
+        }
     }
 }
 

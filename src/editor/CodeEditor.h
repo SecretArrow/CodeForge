@@ -20,6 +20,17 @@ class Minimap;
 class Theme;
 struct Diagnostic;
 
+// Extension point for editor modes and overlays (Vim/Emacs modal editing,
+// completion popups, AI inline suggestions). Registered interceptors receive
+// key events BEFORE the editor's own handling; the most recently registered
+// interceptor wins (they are queried back-to-front).
+class EditorKeyInterceptor {
+public:
+    virtual ~EditorKeyInterceptor() = default;
+    // Return true to consume the event.
+    virtual bool editorKeyPress(CodeEditor* editor, QKeyEvent* e) = 0;
+};
+
 // Transparent overlay pinned to the top of the viewport showing the
 // enclosing scope lines (VS Code style sticky scroll, up to 3 levels).
 class StickyScrollOverlay : public QWidget {
@@ -74,6 +85,18 @@ public:
 
     void gotoLine(int line, int column = 0);   // 0-based
     void setLineHeightApplied(bool v) { m_lineHeightApplied = v; }
+
+    // ---- key interception (Vim/Emacs modes, completion popups, AI) ----
+    void addKeyInterceptor(EditorKeyInterceptor* i);       // last added = highest priority
+    void removeKeyInterceptor(EditorKeyInterceptor* i);
+
+    // ---- AI inline suggestion (ghost text after the caret; Tab accepts) ----
+    void setInlineSuggestion(const QString& text);
+    QString inlineSuggestion() const { return m_inlineSuggestion; }
+    void acceptInlineSuggestion();
+
+    // ---- breakpoints (state lives in core/BreakpointStore) ----
+    void refreshBreakpoints();                             // re-read store for current file
 
     // ---- multi-cursor ----
     void addCursorAt(const QPoint& viewportPos);   // Alt+Click
@@ -169,6 +192,12 @@ private:
     bool m_bracketColorsValid = false;
     QTimer* m_bracketTimer = nullptr;
 
+    // extension points
+    QList<EditorKeyInterceptor*> m_interceptors;
+    QString m_inlineSuggestion;
+    QSet<int> m_breakpoints;
+    bool m_breakpointsWired = false;
+
     // colors (from theme)
     QColor m_activeLineColor, m_lineNumberColor, m_lineNumberActiveColor;
     QColor m_indentGuideColor, m_bracketMatchColor, m_findMatchColor, m_currentFindColor;
@@ -176,6 +205,7 @@ private:
     QColor m_caretColor, m_selectionColor, m_diagnosticErrorColor, m_diagnosticWarningColor;
     QColor m_diagnosticInfoColor;
     QColor m_bracketColors[3];
+    QColor m_breakpointColor, m_ghostColor;
 
     bool m_showLineNumbers = true;
     bool m_showFolding = true;

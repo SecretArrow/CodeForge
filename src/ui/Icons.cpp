@@ -253,6 +253,79 @@ void Icons::paint(Name name, QPainter& p, const QColor& color, int size)
         p.drawLine(QPointF(m + w*0.54, m + w*0.32), QPointF(m + w*0.82, m + w*0.32));
         p.drawLine(QPointF(m + w*0.54, m + w*0.62), QPointF(m + w*0.82, m + w*0.62));
         break;
+    case Name::Bug: {
+        // body + head + legs
+        p.drawEllipse(QRectF(m + w*0.3, m + w*0.35, w*0.4, w*0.55));
+        p.drawEllipse(QRectF(m + w*0.36, m + w*0.12, w*0.28, w*0.28));
+        p.drawLine(QPointF(m + w*0.5, m + w*0.42), QPointF(m + w*0.5, m + w*0.85));
+        p.drawLine(QPointF(m + w*0.3, m + w*0.5), QPointF(m + w*0.08, m + w*0.4));
+        p.drawLine(QPointF(m + w*0.3, m + w*0.68), QPointF(m + w*0.08, m + w*0.72));
+        p.drawLine(QPointF(m + w*0.7, m + w*0.5), QPointF(m + w*0.92, m + w*0.4));
+        p.drawLine(QPointF(m + w*0.7, m + w*0.68), QPointF(m + w*0.92, m + w*0.72));
+        break;
+    }
+    case Name::Globe: {
+        p.drawEllipse(QRectF(m + w*0.08, m + w*0.08, w*0.84, w*0.84));
+        p.drawEllipse(QRectF(m + w*0.32, m + w*0.08, w*0.36, w*0.84));
+        p.drawLine(QPointF(m + w*0.1, m + w*0.5), QPointF(m + w*0.9, m + w*0.5));
+        p.drawArc(QRectF(m + w*0.12, m - w*0.22, w*0.76, w*0.76), 200 * 16, 140 * 16);
+        p.drawArc(QRectF(m + w*0.12, m + w*0.46, w*0.76, w*0.76), 20 * 16, 140 * 16);
+        break;
+    }
+    case Name::Database: {
+        p.drawEllipse(QRectF(m + w*0.12, m + w*0.08, w*0.76, w*0.24));
+        p.drawLine(QPointF(m + w*0.12, m + w*0.2), QPointF(m + w*0.12, m + w*0.8));
+        p.drawLine(QPointF(m + w*0.88, m + w*0.2), QPointF(m + w*0.88, m + w*0.8));
+        p.drawArc(QRectF(m + w*0.12, m + w*0.32, w*0.76, w*0.24), 180 * 16, 180 * 16);
+        p.drawArc(QRectF(m + w*0.12, m + w*0.56, w*0.76, w*0.24), 180 * 16, 180 * 16);
+        p.drawArc(QRectF(m + w*0.12, m + w*0.68, w*0.76, w*0.24), 0, 180 * 16);
+        break;
+    }
+    case Name::Cloud: {
+        QPainterPath cloud;
+        cloud.addRoundedRect(QRectF(m + w*0.15, m + w*0.5, w*0.7, w*0.3), w*0.15, w*0.15);
+        cloud.addEllipse(QRectF(m + w*0.3, m + w*0.22, w*0.42, w*0.42));
+        p.drawPath(cloud);
+        break;
+    }
+    case Name::Robot: {
+        p.drawRoundedRect(QRectF(m + w*0.2, m + w*0.3, w*0.6, w*0.5), 2, 2);
+        p.drawLine(QPointF(m + w*0.5, m + w*0.12), QPointF(m + w*0.5, m + w*0.3));
+        p.drawEllipse(QRectF(m + w*0.45, m + w*0.02, w*0.12, w*0.12));
+        p.drawLine(QPointF(m + w*0.35, m + w*0.45), QPointF(m + w*0.35, m + w*0.5));
+        p.drawLine(QPointF(m + w*0.65, m + w*0.45), QPointF(m + w*0.65, m + w*0.5));
+        p.drawLine(QPointF(m + w*0.38, m + w*0.66), QPointF(m + w*0.62, m + w*0.66));
+        p.drawLine(QPointF(m + w*0.05, m + w*0.45), QPointF(m + w*0.2, m + w*0.45));
+        p.drawLine(QPointF(m + w*0.8, m + w*0.45), QPointF(m + w*0.95, m + w*0.45));
+        break;
+    }
+    case Name::Gauge: {
+        p.drawArc(QRectF(m + w*0.1, m + w*0.15, w*0.8, w*0.8), 30 * 16, 120 * 16);
+        p.drawLine(QPointF(m + w*0.5, m + w*0.55), QPointF(m + w*0.78, m + w*0.32));
+        p.drawEllipse(QRectF(m + w*0.45, m + w*0.5, w*0.1, w*0.1));
+        break;
+    }
+    case Name::TaskList: {
+        p.drawLine(QPointF(m + w*0.24, m + w*0.22), QPointF(m + w*0.32, m + w*0.3));
+        p.drawLine(QPointF(m + w*0.32, m + w*0.3), QPointF(m + w*0.44, m + w*0.14));
+        p.drawLine(QPointF(m + w*0.55, m + w*0.22), QPointF(m + w*0.9, m + w*0.22));
+        p.drawLine(QPointF(m + w*0.24, m + w*0.52), QPointF(m + w*0.32, m + w*0.6));
+        p.drawLine(QPointF(m + w*0.32, m + w*0.6), QPointF(m + w*0.44, m + w*0.44));
+        p.drawLine(QPointF(m + w*0.55, m + w*0.52), QPointF(m + w*0.9, m + w*0.52));
+        p.drawLine(QPointF(m + w*0.24, m + w*0.82), QPointF(m + w*0.32, m + w*0.9));
+        p.drawLine(QPointF(m + w*0.32, m + w*0.9), QPointF(m + w*0.44, m + w*0.74));
+        p.drawLine(QPointF(m + w*0.55, m + w*0.82), QPointF(m + w*0.9, m + w*0.82));
+        break;
+    }
+    case Name::Api: {
+        // braces { } with a dot between them
+        p.drawArc(QRectF(m + w*0.14, m + w*0.12, w*0.34, w*0.76), 60 * 16, 240 * 16);
+        p.drawArc(QRectF(m + w*0.52, m + w*0.12, w*0.34, w*0.76), -120 * 16, 240 * 16);
+        p.setPen(noPen);
+        p.setBrush(color);
+        p.drawEllipse(QRectF(m + w*0.44, m + w*0.44, w*0.12, w*0.12));
+        break;
+    }
     }
 }
 
