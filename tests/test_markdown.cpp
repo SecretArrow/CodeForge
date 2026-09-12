@@ -87,7 +87,8 @@ void TestMarkdown::tableRendering()
     QVERIFY(html.contains("<table>"));
     QVERIFY(html.contains("<th>A</th>"));
     QVERIFY(html.contains("text-align:right"));
-    QVERIFY(html.contains("<td>2</td>"));
+    QVERIFY(html.contains("<td>1</td>"));                       // left-aligned by default
+    QVERIFY(html.contains(">2</td>"));                          // right-aligned via ---:
 }
 
 void TestMarkdown::hrAndParagraphs()
