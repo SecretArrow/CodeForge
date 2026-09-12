@@ -58,16 +58,16 @@ Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Registry]
-Root: HKA; Subdir: "Software\Classes\CodeForge.cpp"; ValueType: string; ValueData: "C++ source (CodeForge)"; Flags: uninsdeletekey; Tasks: assoc_cpp
-Root: HKA; Subdir: "Software\Classes\CodeForge.cpp\shell\open\command"; ValueType: string; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: assoc_cpp
-Root: HKA; Subdir: "Software\Classes\.cpp"; ValueType: string; ValueData: "CodeForge.cpp"; Flags: uninsdeletevalue; Tasks: assoc_cpp
-Root: HKA; Subdir: "Software\Classes\.h"; ValueType: string; ValueData: "CodeForge.cpp"; Flags: uninsdeletevalue; Tasks: assoc_cpp
-Root: HKA; Subdir: "Software\Classes\.hpp"; ValueType: string; ValueData: "CodeForge.cpp"; Flags: uninsdeletevalue; Tasks: assoc_cpp
-Root: HKA; Subdir: "Software\Classes\CodeForge.text"; ValueType: string; ValueData: "Text (CodeForge)"; Flags: uninsdeletekey; Tasks: assoc_text
-Root: HKA; Subdir: "Software\Classes\CodeForge.text\shell\open\command"; ValueType: string; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: assoc_text
-Root: HKA; Subdir: "Software\Classes\.txt"; ValueType: string; ValueData: "CodeForge.text"; Flags: uninsdeletevalue; Tasks: assoc_text
-Root: HKA; Subdir: "Software\Classes\.md"; ValueType: string; ValueData: "CodeForge.text"; Flags: uninsdeletevalue; Tasks: assoc_text
-Root: HKA; Subdir: "Software\Classes\.json"; ValueType: string; ValueData: "CodeForge.text"; Flags: uninsdeletevalue; Tasks: assoc_text
+Root: HKA; Subkey: "Software\Classes\CodeForge.cpp"; ValueType: string; ValueData: "C++ source (CodeForge)"; Flags: uninsdeletekey; Tasks: assoc_cpp
+Root: HKA; Subkey: "Software\Classes\CodeForge.cpp\shell\open\command"; ValueType: string; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: assoc_cpp
+Root: HKA; Subkey: "Software\Classes\.cpp"; ValueType: string; ValueData: "CodeForge.cpp"; Flags: uninsdeletevalue; Tasks: assoc_cpp
+Root: HKA; Subkey: "Software\Classes\.h"; ValueType: string; ValueData: "CodeForge.cpp"; Flags: uninsdeletevalue; Tasks: assoc_cpp
+Root: HKA; Subkey: "Software\Classes\.hpp"; ValueType: string; ValueData: "CodeForge.cpp"; Flags: uninsdeletevalue; Tasks: assoc_cpp
+Root: HKA; Subkey: "Software\Classes\CodeForge.text"; ValueType: string; ValueData: "Text (CodeForge)"; Flags: uninsdeletekey; Tasks: assoc_text
+Root: HKA; Subkey: "Software\Classes\CodeForge.text\shell\open\command"; ValueType: string; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: assoc_text
+Root: HKA; Subkey: "Software\Classes\.txt"; ValueType: string; ValueData: "CodeForge.text"; Flags: uninsdeletevalue; Tasks: assoc_text
+Root: HKA; Subkey: "Software\Classes\.md"; ValueType: string; ValueData: "CodeForge.text"; Flags: uninsdeletevalue; Tasks: assoc_text
+Root: HKA; Subkey: "Software\Classes\.json"; ValueType: string; ValueData: "CodeForge.text"; Flags: uninsdeletevalue; Tasks: assoc_text
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
