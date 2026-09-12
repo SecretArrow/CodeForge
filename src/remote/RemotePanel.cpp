@@ -1,6 +1,7 @@
 #include "remote/RemotePanel.h"
 
 #include <QApplication>
+#include <QComboBox>
 #include <QDialog>
 #include <QDir>
 #include <QFileInfo>
