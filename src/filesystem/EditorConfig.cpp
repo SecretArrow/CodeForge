@@ -181,7 +181,7 @@ EditorConfigProps EditorConfig::resolve(const QString& filePath, const QString& 
         rel = QDir::fromNativeSeparators(rel);
 
         // Global section props (rare, applies to everything) then sections.
-        const EditorConfigProps g = parseProps(globalLines);
+        EditorConfigProps g = parseProps(globalLines);
         if (g.valid || !globalLines.isEmpty()) {
             g.valid = true;
             const bool tt = props.trimTrailingSet, fn = props.finalNewlineSet;

@@ -1,6 +1,7 @@
 #pragma once
 // MarkdownPreview: live rendered preview of the active markdown document
 // (QTextBrowser based, styled from the current theme, debounced updates).
+#include <QPointer>
 #include <QTextBrowser>
 #include <QTimer>
 
