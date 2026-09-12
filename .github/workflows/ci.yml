@@ -110,13 +110,69 @@ jobs:
           export LD_LIBRARY_PATH="${QT_ROOT_DIR}/lib:${LD_LIBRARY_PATH}"
           QT_QPA_PLATFORM=offscreen ctest --output-on-failure
 
-      - name: Package (Windows)
+      - name: Package (Windows: deploy, sign, installer, portable zip)
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          CODESIGN_PFX_B64: ${{ secrets.CODESIGN_PFX_B64 }}
+          CODESIGN_PFX_PASSWORD: ${{ secrets.CODESIGN_PFX_PASSWORD }}
         run: |
+          $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           windeployqt --release --no-translations build\bin\CodeForge.exe
-          Compress-Archive -Path build\bin\* -DestinationPath "dist/CodeForge-${{ env.CF_VERSION }}-${{ matrix.name }}.zip" -Force
+
+          # ---- Code signing (SmartScreen hardening) ----
+          # Priority 1: repository secret (stable publisher identity).
+          # Priority 2: ephemeral self-signed cert generated in CI; the public
+          #             .cer is shipped in every release so users can trust it.
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          $cerPath = Join-Path $env:RUNNER_TEMP "CodeForge.cer"
+          if ($env:CODESIGN_PFX_B64) {
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CODESIGN_PFX_B64))
+            Write-Host "Signing with repository-provided certificate"
+          } else {
+            Write-Host "No CODESIGN_PFX secret - generating a self-signed project certificate"
+            $cert = New-SelfSignedCertificate -Type CodeSigningCert `
+              -Subject "CN=CodeForge Project, O=CodeForge, C=US" `
+              -KeyUsage DigitalSignature -KeyExportPolicy Exportable `
+              -HashAlgorithm SHA256 -KeyLength 3072 `
+              -NotAfter (Get-Date).AddYears(5) -CertStoreLocation Cert:\CurrentUser\My
+            $pwdPlain = [Guid]::NewGuid().ToString("N")
+            Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password (ConvertTo-SecureString $pwdPlain -AsPlainText -Force) | Out-Null
+            $env:CODESIGN_PFX_PASSWORD = $pwdPlain
+            Export-Certificate -Cert $cert -FilePath $cerPath | Out-Null
+          }
+
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) { throw "signtool.exe not found" }
+
+          & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
+            /f $pfxPath /p $env:CODESIGN_PFX_PASSWORD build\bin\CodeForge.exe
+          if ($LASTEXITCODE -ne 0) { throw "signing CodeForge.exe failed" }
+
+          # ---- Inno Setup installer ----
+          choco install innosetup -y --no-progress | Out-Null
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc "/DAppVersion=$env:CF_VERSION" "/DPayloadDir=build\bin" installer\CodeForge.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+
+          # Sign the installer itself (Authenticode on the outer exe).
+          & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
+            /f $pfxPath /p $env:CODESIGN_PFX_PASSWORD installer\Output\CodeForgeSetup-*.exe
+          if ($LASTEXITCODE -ne 0) { throw "signing installer failed" }
+          Move-Item installer\Output\CodeForgeSetup-*.exe dist\
+
+          # Publish the public certificate so users can trust the publisher.
+          if (Test-Path $cerPath) { Copy-Item $cerPath dist\CodeForge.cer }
+
+          # ---- Portable zip with SmartScreen helpers ----
+          Copy-Item packaging\windows\Unblock-CodeForge.ps1 build\bin\
+          Copy-Item packaging\windows\Trust-CodeForgeCertificate.ps1 build\bin\
+          Copy-Item packaging\windows\README-SMARTSCREEN.txt build\bin\
+          if (Test-Path $cerPath) { Copy-Item $cerPath build\bin\ }
+          Compress-Archive -Path build\bin\* -DestinationPath "dist/CodeForge-$env:CF_VERSION-windows-x64.zip" -Force
+          if (Test-Path packaging\windows\SMARTSCREEN.md) { Copy-Item packaging\windows\SMARTSCREEN.md dist\SMARTSCREEN.md }
 
       - name: Package (Linux AppImage)
         if: runner.os == 'Linux'
@@ -152,7 +208,18 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           macdeployqt build/bin/CodeForge.app -verbose=1
-          ditto -c -k --keepParent build/bin/CodeForge.app "dist/CodeForge-${{ env.CF_VERSION }}-${{ matrix.name }}.zip"
+          ditto -c -k --keepParent build/bin/CodeForge.app "dist/CodeForge-${CF_VERSION}-${{ matrix.name }}.zip"
+
+      - name: SHA256 checksums (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $lines = Get-ChildItem dist\* | ForEach-Object {
+            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$h  $($_.Name)"
+          }
+          $lines | Set-Content -Encoding utf8 dist\SHA256SUMS.txt
+          Get-Content dist\SHA256SUMS.txt
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -180,6 +247,13 @@ jobs:
         shell: bash
         run: ls -la dist/
 
+      - name: SHA256 checksums (release)
+        shell: bash
+        run: |
+          cd dist
+          ls * | grep -v SHA256SUMS | xargs sha256sum > SHA256SUMS.txt || true
+          cat SHA256SUMS.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -192,9 +266,25 @@ jobs:
             ### Downloads
             | Platform | File |
             |----------|------|
-            | Windows 10/11 x64 | `CodeForge-*-windows-x64.zip` — extract & run `CodeForge.exe` (portable-friendly) |
+            | Windows 10/11 x64 (installer) | `CodeForgeSetup-*-x64.exe` — signed installer with file associations |
+            | Windows 10/11 x64 (portable) | `CodeForge-*-windows-x64.zip` — extract & run `CodeForge.exe` |
             | Linux x86_64 | `CodeForge-*-linux-x86_64.AppImage` — `chmod +x` then run |
-            | macOS (universal: Apple Silicon + Intel) | `CodeForge-*-macos-universal.zip` |
+            | macOS (universal) | `CodeForge-*-macos-universal.zip` |
+            | Integrity | `SHA256SUMS.txt` — verify with `Get-FileHash <file> -Algorithm SHA256` |
+
+            ### Windows SmartScreen notice / Peringatan SmartScreen
+            New releases have no SmartScreen reputation yet. When "Windows protected your PC" appears: **More info → Run anyway**.
+            Rilis baru belum memiliki reputasi SmartScreen. Saat dialog muncul: **More info → Run anyway**.
+
+            Windows binaries are **code-signed** ("CodeForge Project"). Trust the shipped
+            `CodeForge.cer` to show the verified publisher and silence future warnings:
+
+            ```powershell
+            powershell -ExecutionPolicy Bypass -File .\Trust-CodeForgeCertificate.ps1 -CertFile .\CodeForge.cer
+            ```
+
+            Portable users: run `Unblock-CodeForge.ps1` once after extracting. Full guide: `SMARTSCREEN.md` in this release.
 
             > macOS builds are unsigned — on first launch right-click → Open (Gatekeeper).
-            > Windows builds are portable: no installer required, settings live next to the exe when a `portable/` folder exists.
+            > Windows portable builds run settings-free next to the exe when a `portable/` folder exists.
+            > Offline-first. No telemetry. Ever.

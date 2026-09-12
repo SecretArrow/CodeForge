@@ -13,6 +13,7 @@
 #include <algorithm>
 
 #include "settings/SettingsManager.h"
+#include "syntax/LanguageRegistry.h"
 
 namespace cf {
 

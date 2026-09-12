@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(CodeForge VERSION 1.2.0 LANGUAGES CXX)
+project(CodeForge VERSION 1.2.0 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -66,6 +66,10 @@ endif()
 
 qt_add_executable(CodeForge WIN32 MACOSX_BUNDLE src/main.cpp)
 target_link_libraries(CodeForge PRIVATE CodeForgeLib)
+if(WIN32)
+    # Embedded VERSIONINFO + icon + manifest (SmartScreen / Explorer metadata).
+    target_sources(CodeForge PRIVATE src/app/codeforge.rc)
+endif()
 set_target_properties(CodeForge PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     QT_RESOURCE_PREFIX "/codeforge")

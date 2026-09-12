@@ -8,6 +8,29 @@
 
 ## Ringkasan Fitur yang Diimplementasikan
 
+### Baru di v1.2.0
+- **IntelliSense-style autocomplete** — popup completion (Ctrl+Space / auto-trigger) dari kata dokumen + tabel keyword per bahasa + snippet, filter/rank dengan fallback, integrasi popup sadar tema
+- **Vim mode** (modal: NORMAL/INSERT/VISUAL — gerak `hjkl w b e 0 ^ $ gg G`, operator `d/c/y` + count, `x X D C S p P u o O i a A I`, `/` dan `:w :q :wq :N`) dan **Emacs mode** (`C-f/b/n/p/a/e/d/k/y`, `M-f/b/w/d`, mark `C-Space`, kill ring) — via key interceptor, status mode di status bar
+- **Snippets** — built-in per bahasa + user snippets (`snippets.json`) + workspace (`.codeforge/snippets.json`), editor snippet terintegrasi, ekspansi Tab / via popup
+- **Diff/Merge viewer** — sisi-per-sisi dengan padding rata baris, hunk navigation, *copy to other side* (merge-lite), warna add/delete sadar tema; sumber: Compare Files, **Compare with Git HEAD**, perubahan eksternal
+- **Debugger** (GDB/LLDB via MI2, `gdb --interpreter=mi2`) — breakpoint dari margin editor (sync 2 arah dengan BreakpointStore), Continue/Pause/Step Over/Into/Out, call stack, locals, evaluate expression, console output — panel sidebar + shortcut F5/F10/F11
+- **HTTP client** (QtNetwork) — GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS, headers, Basic/Bearer, timeout, response viewer (status, waktu, ukuran, headers, **pretty JSON**), save/load request, **copy as cURL**
+- **gRPC client** — via `grpcurl` (deteksi otomatis PATH/setting), metadata, plaintext/TLS-CA, request JSON
+- **Database browser** (SQLite via QSQLITE) — buka db, browse tabel+kolom, jalankan SQL (Ctrl+Enter, highlighter SQL), hasil grid, **export CSV**
+- **Remote (SSH)** — profil koneksi (key/agent, BatchMode anti-hang), remote file browser, **buka file remote → edit lokal → Ctrl+S push back via SSH**, download/upload, jalankan perintah remote
+- **AI Assistant (offline-first)** — endpoint OpenAI-compatible **lokal** (Ollama/LM Studio/llama.cpp), streaming SSE, chat, aksi **Explain/Refactor/Fix/Tests** atas seleksi, API key disimpan terenkripsi AES-256-GCM (KeyStore/DPAPI), peringatan eksplisit jika endpoint bukan localhost
+- **Task Runner** — `.codeforge/tasks.json` + default CMake tasks (Configure/Build/Clean), output ke panel, template generator
+- **Performance Profiler** — launch/attach proses, sampling CPU%/RAM (Windows: GetProcessTimes+psapi; Linux: /proc), grafik live, export CSV
+
+### Windows SmartScreen & Defender
+Rilis baru belum punya reputasi SmartScreen, jadi Windows menampilkan *"Windows protected your PC"* — **normal** dan bukan indikasi malware. Mitigasi yang sudah diterapkan mulai v1.2.0:
+- **Binary Windows di-sign** (Authenticode, "CodeForge Project") — installer + portable
+- **VERSIONINFO lengkap** + manifest `asInvoker` (tanpa UAC), UTF-8 code page, long-path aware, DPI-aware — mengurangi heuristik "unknown publisher"
+- `CodeForge.cer` dipublikasikan di setiap rilis + script `Trust-CodeForgeCertificate.ps1` (trust publisher, tanpa admin)
+- `Unblock-CodeForge.ps1` di zip portable (hapus Mark-of-the-Web)
+- `SHA256SUMS.txt` untuk verifikasi integritas
+- Panduan lengkap: **[packaging/windows/SMARTSCREEN.md](packaging/windows/SMARTSCREEN.md)** (EN+ID)
+
 ### Baru di v1.1.0
 - **Multi-cursor editing** (nyata, bukan dekorasi): `Alt+Click` tambah/hapus kursor, `Ctrl+D` pilih kemunculan berikutnya, `Ctrl+K Ctrl+D` skip, `Ctrl+Alt+↑/↓` kursor atas/bawah, `Esc` kembali satu kursor — ketik/Backspace/Delete/Enter/Tab diterapkan ke semua kursor dalam satu langkah undo
 - **LSP client asli** (JSON-RPC 2.0 over stdio): konfigurasi per bahasa di `Settings → Extensions` (mis. `cpp=clangd`, `python=pyright-langserver --stdio`), **publishDiagnostics → Problems + squiggly underline**, hover (`Ctrl+K Ctrl+I`), **Go to Definition** (`F12`)

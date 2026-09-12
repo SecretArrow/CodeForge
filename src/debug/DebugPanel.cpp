@@ -1,6 +1,7 @@
 #include "debug/DebugPanel.h"
 
 #include <QComboBox>
+#include <QFileInfo>
 #include <QFontDatabase>
 #include <QFormLayout>
 #include <QHBoxLayout>

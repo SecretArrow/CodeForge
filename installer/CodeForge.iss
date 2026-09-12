@@ -1,10 +1,18 @@
 ; ============================================================
 ;  CodeForge Windows installer (Inno Setup 6)
-;  Build: ISCC.exe installer\CodeForge.iss
+;  Build from repo root:
+;    ISCC.exe /DAppVersion=1.2.0 /DPayloadDir=build\bin installer\CodeForge.iss
+;  The payload must already contain windeployqt output.
 ; ============================================================
 
+#ifndef AppVersion
+#define AppVersion "1.2.0"
+#endif
+#ifndef PayloadDir
+#define PayloadDir "..\build\bin"
+#endif
+
 #define AppName "CodeForge"
-#define AppVersion "1.0.0"
 #define AppPublisher "CodeForge Project"
 #define AppExe "CodeForge.exe"
 
@@ -13,16 +21,20 @@ AppId={{8E5B7F3A-2C41-4E0D-9A7B-CODEFORGE100}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
+AppVerName={#AppName} {#AppVersion}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 UninstallDisplayIcon={app}\{#AppExe}
 OutputDir=Output
-OutputBaseFilename=CodeForgeSetup
+OutputBaseFilename=CodeForgeSetup-{#AppVersion}-x64
 Compression=lzma2/max
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64compatible
 PrivilegesRequiredOverridesAllowed=dialog
 WizardStyle=modern
+SetupIconFile=..\src\app\codeforge.ico
+LicenseFile=..\LICENSE
 ChangesAssociations=yes
 
 [Tasks]
@@ -32,7 +44,9 @@ Name: "assoc_cpp"; Description: "Associate .cpp / .h / .hpp files"; Flags: unche
 Name: "assoc_text"; Description: "Associate .txt / .md / .json files"; Flags: unchecked
 
 [Files]
-Source: "..\release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\packaging\windows\SMARTSCREEN.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\packaging\windows\README-SMARTSCREEN.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Dirs]
 ; Portable mode marker folder: settings stored in {app}\portable\data

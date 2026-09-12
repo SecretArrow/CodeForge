@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity version="1.2.0.0" processorArchitecture="*"
+                    name="CodeForge.Project.CodeForge" type="win32"/>
+  <description>CodeForge — lightweight native code editor</description>
+
+  <!-- Run as the invoking user: no UAC elevation prompt, no "installer
+       detection" heuristics (an unsigned exe that asks for admin is a
+       primary SmartScreen / Defender false-positive trigger). -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3" security="1.0">
+    <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+      <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+    </requestedPrivileges>
+  </trustInfo>
+
+  <!-- Declare OS-version support so the loader applies correct compat shims. -->
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"/>
+    </application>
+  </compatibility>
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <!-- UTF-8 as the active ANSI code page: correct handling of text with
+           non-ASCII characters regardless of the system locale. -->
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+      <!-- Paths longer than 260 characters work without registry tweaks. -->
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+      <!-- Crisp rendering on high-DPI / mixed-DPI multi-monitor setups. -->
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+    </windowsSettings>
+  </application>
+</assembly>
