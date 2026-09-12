@@ -9,6 +9,7 @@
 
 #include "core/Common.h"
 #include "core/Encoding.h"
+#include "filesystem/EditorConfig.h"
 
 class QTextDocument;
 
@@ -51,6 +52,10 @@ public:
     void reloadFromDisk();
     void markClean();
 
+    // ---- .editorconfig (per-document overrides, resolved by MainWindow) ----
+    void setEditorConfig(const EditorConfigProps& props);
+    const EditorConfigProps& editorConfig() const;
+
     // ---- external change detection ----
     void snapshotDiskState();
     bool hasExternalChange() const;   // mtime/size (or hash) differs from snapshot
@@ -72,6 +77,7 @@ private:
     QString m_untitledId;
     enc::Info m_encoding;
     LineEndings m_eol = LineEndings::Lf;
+    EditorConfigProps m_editorConfig;
     bool m_readOnly = false;
     bool m_saving = false;
 

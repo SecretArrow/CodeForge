@@ -32,7 +32,6 @@ private slots:
 private:
     QWidget* buildSchemaPage(const QString& page);
     QWidget* buildKeyboardPage();
-    QWidget* buildExtensionsStubPage();
     void populateKeyboardTable();
 
     SettingsManager* m_settings;

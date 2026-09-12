@@ -19,6 +19,8 @@ public:
 
     // Returns token color; falls back to sane defaults derived from editor colors.
     QColor color(const QString& token) const;
+    // Returns token color; falls back to the caller-provided color.
+    QColor color(const QString& token, const QColor& fallback) const;
     bool hasColor(const QString& token) const { return m_colors.contains(token); }
 
     // Editor helpers

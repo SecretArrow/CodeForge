@@ -1,8 +1,11 @@
 #pragma once
 // Bottom panel with tabs: Problems, Output, Terminal, Build, Search Results.
+// Problems merge build (compiler) problems and LSP diagnostics per file.
+#include <QHash>
 #include <QTabWidget>
 
 #include "buildsys/BuildManager.h"
+#include "lsp/LanguageService.h"
 
 class QPlainTextEdit;
 class QTreeWidget;
@@ -30,6 +33,7 @@ public:
     void showBuild();
     void appendOutput(const QString& category, const QString& text);
     void setProblems(const QVector<cf::BuildProblem>& problems);
+    void updateDiagnostics(const QString& file, const QVector<cf::Diagnostic>& diags);
     void setBuildSummary(bool ok, int errors, int warnings);
     void showSearchResults(const QString& placeholder);
 
@@ -40,6 +44,10 @@ private slots:
     void onProblemActivated(QTreeWidgetItem* item, int col);
 
 private:
+    void rebuildProblems();
+    void addProblemRow(const QString& severityText, Icons::Name icon, const QString& code,
+                       const QString& message, const QString& file, int line, int column);
+
     TerminalPane* m_terminal;
     QPlainTextEdit* m_output;
     QPlainTextEdit* m_buildOutput;
@@ -47,6 +55,8 @@ private:
     QTreeWidget* m_searchResults;
     QPushButton* m_runStop;
     QComboBox* m_outputCategory;
+    QVector<BuildProblem> m_buildProblems;
+    QHash<QString, QVector<cf::Diagnostic>> m_lspDiags;
     int m_problemCount = 0;
 };
 

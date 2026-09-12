@@ -3,22 +3,130 @@
 #include <QAbstractScrollArea>
 #include <QApplication>
 #include <QFontDatabase>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPointer>
+#include <QPolygon>
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QSet>
 #include <QTextBlock>
 #include <QTextLayout>
+#include <QTimer>
+
+#include <algorithm>
+#include <functional>
 
 #include "editor/Minimap.h"
+#include "editor/MultiCursorOps.h"
+#include "filesystem/EditorConfig.h"
 #include "settings/SettingsManager.h"
 #include "syntax/LanguageRegistry.h"
 #include "themes/Theme.h"
 
 namespace cf {
+
+static const int kStickyLinePad = 2;
+
+// ---------------- StickyScrollOverlay ----------------
+
+StickyScrollOverlay::StickyScrollOverlay(CodeEditor* editor)
+    : QWidget(editor->viewport()), m_editor(editor)
+{
+    setObjectName(QStringLiteral("codeforge_stickyscroll"));
+    setAttribute(Qt::WA_OpaquePaintEvent);
+    hide();
+}
+
+void StickyScrollOverlay::refresh()
+{
+    m_lines.clear();
+    m_height = 0;
+
+    if (!m_editor->m_stickyScrollEnabled || !m_editor->isVisible() || m_editor->isReadOnly()) {
+        setGeometry(0, 0, m_editor->viewport()->width(), 0);
+        hide();
+        update();
+        return;
+    }
+
+    const int lineH = m_editor->fontMetrics().height() + kStickyLinePad;
+    const int first = m_editor->firstVisibleBlock().blockNumber();
+    int current = first;
+    int probe = first - 1;
+
+    QVector<int> found;   // innermost first
+    while (found.size() < 3 && probe >= 0) {
+        const int scanFloor = qMax(0, probe - 2000);
+        bool ok = false;
+        for (int b = probe; b >= scanFloor; --b) {
+            CodeEditor::FoldRange r;
+            if (m_editor->foldRangeForBlock(b, &r) && r.start < current && r.end >= current) {
+                // Don't repeat the line already shown / the first visible line.
+                if (!found.contains(r.start) && r.start != first) {
+                    found.append(r.start);
+                    probe = b - 1;
+                    current = r.start;
+                    ok = true;
+                } else {
+                    probe = b - 1;
+                    ok = false;
+                }
+                break;
+            }
+        }
+        if (!ok) break;
+    }
+
+    // Paint outermost..innermost (top to bottom).
+    for (int i = found.size() - 1; i >= 0; --i) m_lines.append(found.at(i));
+
+    m_height = int(m_lines.size()) * lineH + (m_lines.isEmpty() ? 0 : 2);
+    setGeometry(0, 0, m_editor->viewport()->width(), m_height);
+    setVisible(m_height > 0);
+    update();
+}
+
+void StickyScrollOverlay::paintEvent(QPaintEvent*)
+{
+    QPainter p(this);
+    const QColor bg = m_editor->palette().window().color();
+    const QColor fg = m_editor->m_lineNumberActiveColor;
+    p.fillRect(rect(), bg);
+
+    const int lineH = m_editor->fontMetrics().height() + kStickyLinePad;
+    int y = 0;
+    for (int blockNumber : m_lines) {
+        const QTextBlock b = m_editor->document()->findBlockByNumber(blockNumber);
+        if (b.isValid()) {
+            const QString text = m_editor->fontMetrics().elidedText(
+                b.text(), Qt::ElideRight, width() - 8);
+            p.setPen(fg);
+            p.drawText(4, y, width() - 8, m_editor->fontMetrics().height(), Qt::AlignVCenter, text);
+        }
+        y += lineH;
+    }
+    if (m_height > 0) {
+        p.setPen(bg.darker(140));
+        p.drawLine(0, m_height - 1, width(), m_height - 1);
+    }
+}
+
+void StickyScrollOverlay::mousePressEvent(QMouseEvent* e)
+{
+    const int lineH = m_editor->fontMetrics().height() + kStickyLinePad;
+    const int idx = qBound(0, int(e->pos().y()) / lineH, m_lines.size() - 1);
+    if (idx < 0 || idx >= m_lines.size()) return;
+    const QTextBlock b = m_editor->document()->findBlockByNumber(m_lines.at(idx));
+    if (!b.isValid()) return;
+    QTextCursor c(b);
+    m_editor->setTextCursor(c);
+    const int absY = m_editor->cursorRect(c).top() + m_editor->verticalScrollBar()->value();
+    m_editor->verticalScrollBar()->setValue(absY - idx * lineH);
+}
 
 // ---------------- LineNumberArea ----------------
 
@@ -57,6 +165,12 @@ CodeEditor::CodeEditor(TextDocument* doc, QWidget* parent)
     setObjectName(QStringLiteral("codeforge_editor"));
 
     m_minimap = new Minimap(this);
+    m_bracketTimer = new QTimer(this);
+    m_bracketTimer->setSingleShot(true);
+    m_bracketTimer->setInterval(150);
+    connect(m_bracketTimer, &QTimer::timeout, this, &CodeEditor::rebuildBracketDepths);
+
+    m_sticky = new StickyScrollOverlay(this);
 
     connect(document(), &QTextDocument::blockCountChanged, this, [this](int) { updateMarginWidth(); });
     connect(document(), &QTextDocument::documentLayoutChanged, this, [this]() {
@@ -70,6 +184,7 @@ CodeEditor::CodeEditor(TextDocument* doc, QWidget* parent)
 
     updateMarginWidth();
     onCursorMoved();
+    rebuildBracketDepths();
 }
 
 void CodeEditor::applySettings()
@@ -121,11 +236,15 @@ void CodeEditor::applySettings()
     m_bracketMatching = s.getBool(QStringLiteral("editor.bracketMatching"));
     m_autoIndent = s.getBool(QStringLiteral("editor.autoIndent"));
     m_autoClose = s.getBool(QStringLiteral("editor.autoClosingBrackets"));
+    m_bracketColorization = s.getBool(QStringLiteral("editor.bracketPairColorization"));
+    m_stickyScrollEnabled = s.getBool(QStringLiteral("editor.stickyScroll"));
     setReadOnly(m_doc->isReadOnly());
 
     setViewportMargins(marginWidth(), 0, 0, 0);
     updateExtraSelections();
     m_margin->update();
+    if (m_sticky) m_sticky->refresh();
+    m_bracketTimer->start(150);
 
     if (!m_lineHeightApplied) {
         const double lh = s.get(QStringLiteral("editor.lineHeight")).toDouble();
@@ -144,6 +263,19 @@ void CodeEditor::applySettings()
     }
 }
 
+void CodeEditor::applyEditorConfig()
+{
+    const EditorConfigProps& props = m_doc->editorConfig();
+    if (!props.valid) return;
+    if (!props.indentStyle.isEmpty())
+        m_insertSpaces = (props.indentStyle == QLatin1String("space"));
+    if (props.indentSize > 0)
+        m_tabSize = props.indentSize;
+    else if (props.tabWidth > 0)
+        m_tabSize = props.tabWidth;
+    setTabStopDistance(fontMetrics().horizontalAdvance(QLatin1Char(' ')) * m_tabSize);
+}
+
 void CodeEditor::applyTheme(const Theme& t)
 {
     m_activeLineColor = t.color(QStringLiteral("editor.activeLine"));
@@ -154,6 +286,16 @@ void CodeEditor::applyTheme(const Theme& t)
     m_findMatchColor = t.color(QStringLiteral("editor.findMatch"));
     m_currentFindColor = t.color(QStringLiteral("editor.currentFindMatch"));
     m_foldArrowColor = t.color(QStringLiteral("editor.lineNumber"));
+    m_caretColor = t.color(QStringLiteral("editor.caret"), t.editorForeground());
+    m_selectionColor = t.color(QStringLiteral("editor.selection"));
+    m_selectionColor.setAlpha(150);
+    m_diagnosticErrorColor = t.color(QStringLiteral("editor.diagnosticError"), QColor(0xf1, 0x4c, 0x4c));
+    m_diagnosticWarningColor = t.color(QStringLiteral("editor.diagnosticWarning"), QColor(0xcc, 0xa7, 0x00));
+    m_diagnosticInfoColor = t.color(QStringLiteral("editor.diagnosticInfo"), QColor(0x37, 0x94, 0xff));
+    m_bracketColors[0] = t.color(QStringLiteral("editor.bracketColor1"), QColor(0xff, 0xd7, 0x00));
+    m_bracketColors[1] = t.color(QStringLiteral("editor.bracketColor2"), QColor(0x4e, 0xc9, 0xb0));
+    m_bracketColors[2] = t.color(QStringLiteral("editor.bracketColor3"), QColor(0xc5, 0x86, 0xc0));
+    for (QColor& c : m_bracketColors) c.setAlpha(52);
 
     QPalette pal = viewport()->palette();
     pal.setColor(QPalette::Base, t.editorBackground());
@@ -165,6 +307,7 @@ void CodeEditor::applyTheme(const Theme& t)
 
     updateExtraSelections();
     m_margin->update();
+    if (m_sticky) m_sticky->refresh();
 }
 
 void CodeEditor::updateMarginWidth()
@@ -182,7 +325,7 @@ int CodeEditor::marginWidth() const
     int w = fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits + 10;
     if (m_showFolding) w += 14;
     if (!m_showLineNumbers) w = m_showFolding ? 16 : 0;
-    return w;
+    return qMax(w, 12);   // room for bookmarks even in minimal mode
 }
 
 void CodeEditor::updateMargin(const QRect& rect, int dy)
@@ -190,6 +333,7 @@ void CodeEditor::updateMargin(const QRect& rect, int dy)
     if (dy) m_margin->scroll(0, dy);
     else m_margin->update(0, rect.y(), m_margin->width(), rect.height());
     if (rect.contains(viewport()->rect())) updateMarginWidth();
+    if (m_sticky && m_sticky->isVisible()) m_sticky->refresh();
 }
 
 void CodeEditor::resizeEvent(QResizeEvent* e)
@@ -198,6 +342,7 @@ void CodeEditor::resizeEvent(QResizeEvent* e)
     QRect cr = contentsRect();
     m_margin->setGeometry(cr.left(), cr.top(), marginWidth(), cr.height());
     if (m_minimap) m_minimap->syncViewport();
+    if (m_sticky) m_sticky->refresh();
 }
 
 void CodeEditor::paintMargin(QPaintEvent* e)
@@ -214,9 +359,25 @@ void CodeEditor::paintMargin(QPaintEvent* e)
     const int currentLine = textCursor().blockNumber();
 
     while (block.isValid() && top <= e->rect().bottom()) {
+        if (block.isVisible() && m_bookmarks.contains(blockNumber)) {
+            // Bookmark glyph at the left edge.
+            p.save();
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setPen(Qt::NoPen);
+            p.setBrush(m_diagnosticInfoColor);
+            const int mx = 2;
+            const int my = top + 2;
+            const int mw = 6;
+            const int mh = qMax(4, fm.height() - 4);
+            QPolygon bookmark;
+            bookmark << QPoint(mx, my) << QPoint(mx + mw, my) << QPoint(mx + mw, my + mh)
+                     << QPoint(mx + mw / 2, my + mh - 3) << QPoint(mx, my + mh);
+            p.drawPolygon(bookmark);
+            p.restore();
+        }
         if (block.isVisible() && m_showLineNumbers) {
             p.setPen(blockNumber == currentLine ? m_lineNumberActiveColor : m_lineNumberColor);
-            p.drawText(0, top, m_margin->width() - 16, fm.height(),
+            p.drawText(9, top, m_margin->width() - 20, fm.height(),
                        Qt::AlignRight, QString::number(blockNumber + 1));
         }
         // Fold indicator: arrow when this block starts a foldable range.
@@ -365,6 +526,58 @@ void CodeEditor::unfoldAround(int blockNumber)
     if (changed) applyFoldVisibility();
 }
 
+// ---------------- bracket pair colorization ----------------
+
+void CodeEditor::rebuildBracketDepths()
+{
+    m_bracketTimer->stop();
+    m_bracketColorsValid = false;
+    m_bracketsPerBlock.clear();
+
+    if (m_bracketColorization && document()->characterCount() <= 400000) {
+        const int blocks = document()->blockCount();
+        m_bracketsPerBlock.resize(blocks);
+        int depth = 0;
+        bool inBlockComment = false;
+        int bn = 0;
+        for (QTextBlock b = document()->firstBlock(); b.isValid(); b = b.next(), ++bn) {
+            const QString text = b.text();
+            QVector<QPair<int, int>>& list = m_bracketsPerBlock[bn];
+            bool inLineComment = false;
+            QChar stringChar;
+            for (int i = 0; i < text.size(); ++i) {
+                const QChar ch = text.at(i);
+                if (inBlockComment) {
+                    if (ch == u'/' && i > 0 && text.at(i - 1) == u'*') inBlockComment = false;
+                    continue;
+                }
+                if (inLineComment) break;
+                if (ch == u'"' || ch == u'\'' || ch == u'`') {
+                    if (stringChar.isNull())
+                        stringChar = ch;
+                    else if (stringChar == ch && (i == 0 || text.at(i - 1) != u'\\'))
+                        stringChar = QChar();
+                    continue;
+                }
+                if (!stringChar.isNull()) continue;
+                if (ch == u'/' && i + 1 < text.size()) {
+                    const QChar next = text.at(i + 1);
+                    if (next == u'/') { inLineComment = true; continue; }
+                    if (next == u'*') { inBlockComment = true; continue; }
+                }
+                if (ch == u'{' || ch == u'[' || ch == u'(') {
+                    list.append({i, depth});
+                    ++depth;
+                } else if (ch == u'}' || ch == u']' || ch == u')') {
+                    if (depth > 0) { --depth; list.append({i, depth}); }
+                }
+            }
+        }
+        m_bracketColorsValid = true;
+    }
+    updateExtraSelections();
+}
+
 // ---------------- extra selections / highlighting ----------------
 
 QTextCursor CodeEditor::currentLineSelection() const
@@ -384,6 +597,29 @@ QList<QTextEdit::ExtraSelection> CodeEditor::buildExtraSelections() const
         es.format.setProperty(QTextFormat::FullWidthSelection, true);
         es.cursor = currentLineSelection();
         sel.append(es);
+    }
+
+    // Bracket pair colorization (visible area only).
+    if (m_bracketColorsValid) {
+        QTextBlock b = firstVisibleBlock();
+        int bn = b.blockNumber();
+        const int viewH = viewport()->height();
+        while (b.isValid() && bn < m_bracketsPerBlock.size()) {
+            const QRect geom = blockBoundingGeometry(b).translated(contentOffset()).toRect();
+            if (geom.top() > viewH) break;
+            if (b.isVisible()) {
+                for (const auto& pr : m_bracketsPerBlock.at(bn)) {
+                    QTextEdit::ExtraSelection es;
+                    es.format.setBackground(m_bracketColors[pr.second % 3]);
+                    es.cursor = QTextCursor(document());
+                    es.cursor.setPosition(b.position() + pr.first);
+                    es.cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+                    sel.append(es);
+                }
+            }
+            b = b.next();
+            ++bn;
+        }
     }
 
     // Bracket matching.
@@ -433,11 +669,40 @@ QList<QTextEdit::ExtraSelection> CodeEditor::buildExtraSelections() const
         }
     }
 
+    // Diagnostic squiggles (LSP).
+    for (const Diagnostic& d : m_diagnostics) {
+        const QTextBlock b = document()->findBlockByNumber(d.line);
+        if (!b.isValid()) continue;
+        const int maxCol = qMax(0, b.length() - 1);
+        const int startCol = qBound(0, d.column, maxCol);
+        int len = d.length > 0 ? d.length : qMax(1, b.text().mid(startCol).trimmed().size());
+        len = qBound(1, len, maxCol - startCol + 1);
+        QTextEdit::ExtraSelection es;
+        es.cursor = QTextCursor(document());
+        es.cursor.setPosition(b.position() + startCol);
+        es.cursor.setPosition(qMin(b.position() + startCol + len, b.position() + maxCol),
+                              QTextCursor::KeepAnchor);
+        es.format.setUnderlineStyle(QTextCharFormat::WaveUnderline);
+        es.format.setUnderlineColor(d.severity == Diagnostic::Error ? m_diagnosticErrorColor
+                                    : d.severity == Diagnostic::Warning ? m_diagnosticWarningColor
+                                                                        : m_diagnosticInfoColor);
+        sel.append(es);
+    }
+
     // Find matches.
     for (int i = 0; i < m_findMatches.size(); ++i) {
         QTextEdit::ExtraSelection es;
         es.format.setBackground(i == m_currentFind ? m_currentFindColor : m_findMatchColor);
         es.cursor = m_findMatches.at(i);
+        sel.append(es);
+    }
+
+    // Extra cursor selections.
+    for (const QTextCursor& c : m_extraCursors) {
+        if (!c.hasSelection()) continue;
+        QTextEdit::ExtraSelection es;
+        es.format.setBackground(m_selectionColor);
+        es.cursor = c;
         sel.append(es);
     }
     return sel;
@@ -446,6 +711,12 @@ QList<QTextEdit::ExtraSelection> CodeEditor::buildExtraSelections() const
 void CodeEditor::updateExtraSelections()
 {
     setExtraSelections(buildExtraSelections());
+}
+
+void CodeEditor::setDiagnostics(const QVector<Diagnostic>& diags)
+{
+    m_diagnostics = diags;
+    updateExtraSelections();
 }
 
 void CodeEditor::onCursorMoved()
@@ -470,6 +741,8 @@ void CodeEditor::onDocChanged()
     // Simple, predictable policy: folds are cleared on edits (recompute is user-driven).
     if (!m_foldedBlocks.isEmpty()) { m_foldedBlocks.clear(); applyFoldVisibility(); }
     if (m_minimap) m_minimap->scheduleRebuild();
+    m_bracketTimer->start(150);
+    if (m_sticky) m_sticky->refresh();
 }
 
 void CodeEditor::setFindMatches(const QList<QTextCursor>& matches, int currentIndex)
@@ -525,37 +798,206 @@ void CodeEditor::contextMenuEvent(QContextMenuEvent* e)
     emit contextRequested(e->globalPos());
 }
 
+// ---------------- multi-cursor ----------------
+
+QList<QTextCursor> CodeEditor::allCursors() const
+{
+    QList<QTextCursor> cursors;
+    cursors.append(textCursor());
+    cursors.append(m_extraCursors);
+    return cursors;
+}
+
+void CodeEditor::applyMultiEdit(std::function<void(QList<QTextCursor>&)> op)
+{
+    QList<QTextCursor> cursors = allCursors();
+    multicursor::normalize(cursors);
+    if (cursors.isEmpty()) return;
+    op(cursors);
+    multicursor::normalize(cursors);
+    if (!cursors.isEmpty()) {
+        setTextCursor(cursors.first());
+        m_extraCursors = cursors.mid(1);
+    }
+    updateExtraSelections();
+    viewport()->update();
+}
+
+void CodeEditor::copyWithMultipleCursors(bool cut)
+{
+    QList<QTextCursor> cursors = allCursors();
+    multicursor::normalize(cursors);
+    QStringList texts;
+    for (const QTextCursor& c : cursors) {
+        if (c.hasSelection())
+            texts << c.selectedText().replace(QChar(u'\u2029'), QLatin1Char('\n'));
+    }
+    if (texts.isEmpty()) return;
+    QGuiApplication::clipboard()->setText(texts.join(QLatin1Char('\n')));
+    if (cut) applyMultiEdit([](QList<QTextCursor>& cs) { multicursor::removeSelections(cs); });
+}
+
+void CodeEditor::addCursorAt(const QPoint& viewportPos)
+{
+    const QTextCursor c = cursorForPosition(viewportPos);
+    if (!c.block().isValid()) return;
+    // Clicking an existing extra cursor removes it (VS Code behavior).
+    for (int i = 0; i < m_extraCursors.size(); ++i) {
+        if (m_extraCursors.at(i).position() == c.position()) {
+            m_extraCursors.removeAt(i);
+            updateExtraSelections();
+            viewport()->update();
+            return;
+        }
+    }
+    m_extraCursors.append(c);
+    updateExtraSelections();
+    viewport()->update();
+}
+
+void CodeEditor::addNextOccurrence()
+{
+    QTextCursor c = textCursor();
+    QString needle;
+    if (c.hasSelection()) {
+        needle = c.selectedText().replace(QChar(u'\u2029'), QLatin1Char('\n'));
+        m_occurrenceWholeWord = false;
+    } else {
+        const auto r = multicursor::wordRangeAt(document(), c.position());
+        if (r.first < 0) return;
+        needle = document()->toPlainText().mid(r.first, r.second - r.first);
+        m_occurrenceWholeWord = true;
+    }
+    if (needle.isEmpty()) return;
+
+    if (needle != m_occurrenceNeedle) {
+        // Fresh occurrence chain: select at primary, remember needle.
+        m_occurrenceNeedle = needle;
+        if (!c.hasSelection()) {
+            const auto r = multicursor::wordRangeAt(document(), c.position());
+            c.setPosition(r.first);
+            c.setPosition(r.second, QTextCursor::KeepAnchor);
+            setTextCursor(c);
+        }
+        return;
+    }
+
+    // Find next occurrence after the furthest selection.
+    int lastEnd = 0;
+    for (const QTextCursor& cur : allCursors())
+        lastEnd = qMax(lastEnd, cur.selectionEnd());
+    QList<QPair<int, int>> taken;
+    for (const QTextCursor& cur : allCursors())
+        if (cur.hasSelection()) taken.append({cur.selectionStart(), cur.selectionEnd()});
+    const int pos = multicursor::nextOccurrence(document(), needle, lastEnd, m_occurrenceWholeWord, taken);
+    if (pos < 0) return;
+    QTextCursor nc(document());
+    nc.setPosition(pos);
+    nc.setPosition(pos + needle.size(), QTextCursor::KeepAnchor);
+    m_extraCursors.append(nc);
+    updateExtraSelections();
+    viewport()->update();
+}
+
+void CodeEditor::skipOccurrence()
+{
+    if (m_extraCursors.isEmpty() || m_occurrenceNeedle.isEmpty()) return;
+    // Replace the last added occurrence with the next one.
+    QTextCursor last = m_extraCursors.takeLast();
+    QList<QPair<int, int>> taken;
+    for (const QTextCursor& cur : allCursors())
+        if (cur.hasSelection()) taken.append({cur.selectionStart(), cur.selectionEnd()});
+    const int pos = multicursor::nextOccurrence(document(), m_occurrenceNeedle, last.selectionEnd(),
+                                                m_occurrenceWholeWord, taken);
+    if (pos < 0) {
+        m_extraCursors.append(last);
+        return;
+    }
+    QTextCursor nc(document());
+    nc.setPosition(pos);
+    nc.setPosition(pos + m_occurrenceNeedle.size(), QTextCursor::KeepAnchor);
+    m_extraCursors.append(nc);
+    updateExtraSelections();
+    viewport()->update();
+}
+
+void CodeEditor::addCursorAbove() { addCursorVertical(-1); }
+void CodeEditor::addCursorBelow() { addCursorVertical(1); }
+
+void CodeEditor::addCursorVertical(int direction)
+{
+    const int column = textCursor().positionInBlock();
+    int minBlock = textCursor().blockNumber();
+    int maxBlock = minBlock;
+    for (const QTextCursor& c : m_extraCursors) {
+        minBlock = qMin(minBlock, c.blockNumber());
+        maxBlock = qMax(maxBlock, c.blockNumber());
+    }
+    const int target = direction < 0 ? minBlock - 1 : maxBlock + 1;
+    const QTextBlock b = document()->findBlockByNumber(target);
+    if (!b.isValid()) return;
+    QTextCursor nc(b);
+    nc.movePosition(QTextCursor::StartOfBlock);
+    nc.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, qMin(column, qMax(0, b.length() - 1)));
+    m_extraCursors.append(nc);
+    updateExtraSelections();
+    viewport()->update();
+}
+
+void CodeEditor::clearExtraCursors()
+{
+    if (m_extraCursors.isEmpty()) return;
+    m_extraCursors.clear();
+    m_occurrenceNeedle.clear();
+    updateExtraSelections();
+    viewport()->update();
+}
+
+void CodeEditor::toggleBookmark()
+{
+    const int block = textCursor().blockNumber();
+    if (m_bookmarks.contains(block)) m_bookmarks.remove(block);
+    else m_bookmarks.insert(block);
+    m_margin->update();
+}
+
+void CodeEditor::nextBookmark()
+{
+    if (m_bookmarks.isEmpty()) return;
+    QList<int> lines = m_bookmarks.values();
+    std::sort(lines.begin(), lines.end());
+    const int current = textCursor().blockNumber();
+    for (int l : lines) {
+        if (l > current) { gotoLine(l); return; }
+    }
+    gotoLine(lines.first());
+}
+
+void CodeEditor::previousBookmark()
+{
+    if (m_bookmarks.isEmpty()) return;
+    QList<int> lines = m_bookmarks.values();
+    std::sort(lines.begin(), lines.end(), std::greater<int>());
+    const int current = textCursor().blockNumber();
+    for (int l : lines) {
+        if (l < current) { gotoLine(l); return; }
+    }
+    gotoLine(lines.first());
+}
+
 // ---------------- editing ----------------
 
 void CodeEditor::indentSelection(bool more)
 {
-    QTextCursor c = textCursor();
-    const QString unit = m_insertSpaces ? QString(m_tabSize, QLatin1Char(' ')) : QStringLiteral("\t");
-
-    if (!c.hasSelection()) {
-        if (more) c.insertText(unit);
-        else c.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor, 1);
-        return;
-    }
-
-    const int startBlock = document()->findBlock(c.selectionStart()).blockNumber();
-    const int endBlock = document()->findBlock(c.selectionEnd()).blockNumber();
-    c.beginEditBlock();
-    for (int n = startBlock; n <= endBlock; ++n) {
-        QTextBlock b = document()->findBlockByNumber(n);
-        if (!b.isValid() || b.text().trimmed().isEmpty()) continue;
-        QTextCursor bc(b);
-        bc.movePosition(QTextCursor::StartOfBlock);
-        if (more) bc.insertText(unit);
-        else {
-            const QString t = b.text();
-            int remove = 0;
-            if (t.startsWith(QStringLiteral("\t"))) remove = 1;
-            else for (int i = 0; i < m_tabSize && i < t.size() && t.at(i) == u' '; ++i) ++remove;
-            if (remove > 0) { bc.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor, remove); bc.removeSelectedText(); }
-        }
-    }
-    c.endEditBlock();
+    QList<QTextCursor> cursors;
+    if (!m_extraCursors.isEmpty())
+        cursors = allCursors();
+    else
+        cursors.append(textCursor());
+    multicursor::indent(cursors, m_tabSize, m_insertSpaces, more);
+    if (!cursors.isEmpty()) setTextCursor(cursors.first());
+    updateExtraSelections();
+    viewport()->update();
 }
 
 void CodeEditor::handleAutoIndent()
@@ -667,6 +1109,65 @@ bool CodeEditor::handleAutoClose(QKeyEvent* e)
 
 void CodeEditor::keyPressEvent(QKeyEvent* e)
 {
+    // Multi-cursor editing takes precedence when extra cursors exist.
+    if (!m_extraCursors.isEmpty() && !isReadOnly()) {
+        if (e->key() == Qt::Key_Escape) {
+            clearExtraCursors();
+            e->accept();
+            return;
+        }
+        if (e->matches(QKeySequence::Copy)) { copyWithMultipleCursors(false); e->accept(); return; }
+        if (e->matches(QKeySequence::Cut))  { copyWithMultipleCursors(true);  e->accept(); return; }
+
+        switch (e->key()) {
+        case Qt::Key_Backspace:
+            applyMultiEdit([this](QList<QTextCursor>& cs) { multicursor::backspace(cs, m_tabSize, m_insertSpaces); });
+            e->accept();
+            return;
+        case Qt::Key_Delete:
+            applyMultiEdit([](QList<QTextCursor>& cs) { multicursor::deleteForward(cs); });
+            e->accept();
+            return;
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+            applyMultiEdit([](QList<QTextCursor>& cs) { multicursor::newline(cs); });
+            e->accept();
+            return;
+        case Qt::Key_Tab:
+            applyMultiEdit([this](QList<QTextCursor>& cs) { multicursor::indent(cs, m_tabSize, m_insertSpaces, true); });
+            e->accept();
+            return;
+        case Qt::Key_Backtab:
+            applyMultiEdit([this](QList<QTextCursor>& cs) { multicursor::indent(cs, m_tabSize, m_insertSpaces, false); });
+            e->accept();
+            return;
+        default:
+            break;
+        }
+
+        const QString t = e->text();
+        if (t.size() == 1 && t.at(0).isPrint()) {
+            applyMultiEdit([&t](QList<QTextCursor>& cs) { multicursor::insertText(cs, t); });
+            e->accept();
+            return;
+        }
+
+        // Navigation keys collapse back to a single cursor.
+        switch (e->key()) {
+        case Qt::Key_Left: case Qt::Key_Right: case Qt::Key_Up: case Qt::Key_Down:
+        case Qt::Key_Home: case Qt::Key_End: case Qt::Key_PageUp: case Qt::Key_PageDown:
+            clearExtraCursors();
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (e->key() == Qt::Key_Escape) {
+        clearExtraCursors();
+        m_occurrenceNeedle.clear();
+    }
+
     if (handleAutoClose(e)) return;
 
     if (e->key() == Qt::Key_Tab || e->key() == Qt::Key_Backtab) {
@@ -678,6 +1179,30 @@ void CodeEditor::keyPressEvent(QKeyEvent* e)
         return;
     }
     QPlainTextEdit::keyPressEvent(e);
+}
+
+void CodeEditor::mousePressEvent(QMouseEvent* e)
+{
+    if (e->button() == Qt::LeftButton && (e->modifiers() & Qt::AltModifier) && !isReadOnly()) {
+        addCursorAt(e->pos());
+        e->accept();
+        return;
+    }
+    QPlainTextEdit::mousePressEvent(e);
+}
+
+void CodeEditor::paintEvent(QPaintEvent* e)
+{
+    QPlainTextEdit::paintEvent(e);
+    if (m_extraCursors.isEmpty()) return;
+
+    QPainter p(viewport());
+    const int w = qMax(1, cursorWidth());
+    for (const QTextCursor& c : m_extraCursors) {
+        const QRect r = cursorRect(c);
+        if (r.bottom() < -50 || r.top() > height() + 50) continue;
+        p.fillRect(r.x(), r.y(), w, r.height(), m_caretColor);
+    }
 }
 
 }  // namespace cf

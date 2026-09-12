@@ -1,9 +1,11 @@
 #pragma once
 // EditorGroup: one tab bar + one editor stack. Multiple groups live in a
-// splitter tree managed by EditorArea (VS Code-like splits).
+// splitter tree managed by EditorArea (VS Code-like splits). Image files get
+// a viewer tab; markdown files can open a live preview below the stack.
 #include <QWidget>
 #include <QVector>
 
+class QSplitter;
 class QStackedWidget;
 class QJsonArray;
 
@@ -11,6 +13,7 @@ namespace cf {
 
 class CodeEditor;
 class FindReplaceBar;
+class MarkdownPreview;
 class TabBar;
 class TextDocument;
 
@@ -42,6 +45,10 @@ public:
     void showFind(bool replace);
     FindReplaceBar* findBar() const { return m_find; }
 
+    // Live markdown preview below the editor stack (Ctrl+Shift+V).
+    void toggleMarkdownPreview();
+    bool isMarkdownPreviewActive() const { return m_markdownPreview != nullptr; }
+
     // session
     QJsonArray saveState() const;
 
@@ -58,11 +65,15 @@ protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
+    QWidget* createView(TextDocument* doc);   // CodeEditor or ImagePreview
     CodeEditor* createEditor(TextDocument* doc);
     void connectDocSignals(TextDocument* doc);
     void activateTab(int index);
     void promotePreview(int index);
     int m_previewIndex = -1;
+
+    MarkdownPreview* m_markdownPreview = nullptr;
+    QSplitter* m_previewSplitter = nullptr;
 
     TabBar* m_tabs;
     QStackedWidget* m_stack;

@@ -2,11 +2,22 @@
 
 **Editor kode/text native untuk Windows 10/11 (64-bit) berbasis C++20 dan Qt 6** — lightweight, cepat, offline-first, tanpa telemetri. Dirancang sebagai alternatif ringan dengan pengalaman ala Visual Studio Code, dibangun dengan arsitektur modular yang jelas.
 
-> ⚠️ Aplikasi ini **tidak mengirim data apa pun ke internet**. Tidak ada telemetri, tidak ada request jaringan (selain `git` yang Anda jalankan sendiri).
+> ⚠️ Aplikasi ini **tidak mengirim data apa pun ke internet**. Tidak ada telemetri. Satu-satunya request jaringan opsional adalah cek pembaruan manual / opt-in (`Settings → Updates`) ke GitHub Releases API — **tidak pernah mengunduh apa pun secara otomatis** (selain `git` yang Anda jalankan sendiri).
 
 ---
 
 ## Ringkasan Fitur yang Diimplementasikan
+
+### Baru di v1.1.0
+- **Multi-cursor editing** (nyata, bukan dekorasi): `Alt+Click` tambah/hapus kursor, `Ctrl+D` pilih kemunculan berikutnya, `Ctrl+K Ctrl+D` skip, `Ctrl+Alt+↑/↓` kursor atas/bawah, `Esc` kembali satu kursor — ketik/Backspace/Delete/Enter/Tab diterapkan ke semua kursor dalam satu langkah undo
+- **LSP client asli** (JSON-RPC 2.0 over stdio): konfigurasi per bahasa di `Settings → Extensions` (mis. `cpp=clangd`, `python=pyright-langserver --stdio`), **publishDiagnostics → Problems + squiggly underline**, hover (`Ctrl+K Ctrl+I`), **Go to Definition** (`F12`)
+- **Markdown preview** live (`Ctrl+Shift+V`) — konverter markdown sendiri (heading, fenced code, tabel, blockquote, list, task list, link/gambar, tanpa dependensi eksternal)
+- **.editorconfig** — parser spesifikasi (glob `*`/`**`/`{a,b}`, walk-up sampai `root=true`): indent style/size, tab_width, end_of_line, trim_trailing_whitespace, insert_final_newline
+- **TODO panel** — pemindaian workspace (TODO/FIXME/HACK/XXX) via search engine background, dikelompokkan per file
+- **Bookmark** (`Ctrl+F2` toggle, `F2`/`Shift+F2` navigasi) dengan penanda di margin
+- **Bracket pair colorization** (3 warna per kedalaman, sadar string/komentar) + **Sticky scroll** (header scope menempel di atas editor)
+- **Pratinjau gambar** sebagai tab editor (png/jpg/bmp/gif/svg/webp/ico, zoom Ctrl+roda, klik-ganda fit)
+- **Zen mode** (`Ctrl+K Z`), **Update checker** opt-in (GitHub Releases API)
 
 ### Inti Editor (semuanya berfungsi nyata — bukan mock)
 - Buka file/folder sebagai **workspace**, buffer per tab yang benar-benar independen
@@ -79,12 +90,11 @@ Sesuai aturan "jangan membuat fake/mock implementation", fitur berikut **belum**
 
 | Fitur | Status | Catatan |
 |---|---|---|
-| Multiple cursors / column selection | Fase lanjut | butuh custom editor model |
-| LSP client nyata | Abstraksi siap | `lsp/LanguageService.h` + registry |
-| Debugger (DAP) | Fase 5 | — |
-| VT100 terminal emulation | v1 pakai line-based console | output + input line, history |
-| Sticky scroll | Fase lanjut | — |
-| Marketplace extensions | Fase 5 | loader native plugin sudah jalan |
+| Debugger (DAP) | Fase berikutnya | butuh integrasi adapter per toolchain |
+| VT100 terminal emulation | Pakai line-based console | output + input line, history |
+| Column selection (Alt+Shift) | Fase berikutnya | multi-kursor vertikal sudah ada via Ctrl+Alt+Up/Down |
+| Marketplace extensions | Fase berikutnya | loader native plugin sudah jalan |
+| Completion/renaming LSP | Fase berikutnya | klien LSP v1.1 sudah jalan (diagnostics/hover/definition) |
 
 Keterbatasan teknis jujur lainnya:
 - File raksasa (> ~500 MB) dibaca read-only ke buffer — pemakaian memori ~2× ukuran file (UTF-16)
@@ -147,7 +157,7 @@ ctest --test-dir build/linux         # 6 suite unit test
 ## Testing
 
 ```bash
-ctest --test-dir build/<preset>      # menjalankan 6 suite:
+ctest --test-dir build/<preset>      # menjalankan 10 suite:
 ```
 | Suite | Cakupan |
 |---|---|
@@ -157,6 +167,10 @@ ctest --test-dir build/<preset>      # menjalankan 6 suite:
 | TestCrypto | AES-256-GCM round-trip, **tamper rejection**, zeroize |
 | TestSettingsTheme | schema defaults, set/get, parse tema, 6 tema bawaan |
 | TestSearch | literal/regex/whole-word, glob `**` |
+| TestMultiCursor | insert/backspace/newline ke banyak kursor, occurrence, normalize |
+| TestMarkdown | heading, style inline, code, link/gambar, list, tabel, escaping |
+| TestEditorConfig | glob matcher, properti, resolve dari disk, indent_size=tab |
+| TestJsonRpc | framing Content-Length (split/chunk/malformed), URI round-trip |
 
 ## Struktur Kode
 

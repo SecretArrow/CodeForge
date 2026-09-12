@@ -9,6 +9,7 @@
 
 #include "core/FileUtils.h"
 #include "core/Logger.h"
+#include "filesystem/EditorConfig.h"
 #include "settings/SettingsManager.h"
 #include "syntax/LanguageRegistry.h"
 
@@ -63,6 +64,22 @@ void TextDocument::setReadOnly(bool ro)
 QString TextDocument::languageId() const
 {
     return LanguageRegistry::instance().detectByPath(m_filePath);
+}
+
+void TextDocument::setEditorConfig(const EditorConfigProps& props)
+{
+    m_editorConfig = props;
+    // end_of_line applies to the save path (serializeText).
+    if (props.valid && !props.endOfLine.isEmpty()) {
+        if (props.endOfLine == QLatin1String("crlf")) m_eol = LineEndings::Crlf;
+        else if (props.endOfLine == QLatin1String("cr")) m_eol = LineEndings::Cr;
+        else if (props.endOfLine == QLatin1String("lf")) m_eol = LineEndings::Lf;
+    }
+}
+
+const EditorConfigProps& TextDocument::editorConfig() const
+{
+    return m_editorConfig;
 }
 
 bool TextDocument::existsOnDisk() const
@@ -145,9 +162,14 @@ QString TextDocument::serializeText(QString* error) const
     Q_UNUSED(error);
     QString text = m_document->toPlainText();
 
-    // Trailing whitespace / final newline options (settings-driven, applied on save).
+    // Trailing whitespace / final newline: per-document .editorconfig wins,
+    // falling back to the global settings.
     SettingsManager& s = SettingsManager::instance();
-    if (s.getBool(QStringLiteral("files.trimTrailingWhitespace"))) {
+    const bool trim = m_editorConfig.trimTrailingSet ? m_editorConfig.trimTrailing
+                                                     : s.getBool(QStringLiteral("files.trimTrailingWhitespace"));
+    const bool finalNewline = m_editorConfig.finalNewlineSet ? m_editorConfig.finalNewline
+                                                             : s.getBool(QStringLiteral("files.insertFinalNewline"));
+    if (trim) {
         QStringList lines = text.split(QLatin1Char('\n'));
         for (QString& line : lines) {
             int end = line.size();
@@ -156,7 +178,7 @@ QString TextDocument::serializeText(QString* error) const
         }
         text = lines.join(QLatin1Char('\n'));
     }
-    if (s.getBool(QStringLiteral("files.insertFinalNewline")) && !text.isEmpty() && !text.endsWith(QLatin1Char('\n')))
+    if (finalNewline && !text.isEmpty() && !text.endsWith(QLatin1Char('\n')))
         text += QLatin1Char('\n');
 
     // Convert internal \n to the document's EOL convention.

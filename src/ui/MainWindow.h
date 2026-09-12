@@ -12,6 +12,7 @@ namespace cf {
 class BuildManager;
 class Breadcrumbs;
 class BottomPanel;
+class CodeEditor;
 class CommandRegistry;
 class DocumentManager;
 class EditorArea;
@@ -21,6 +22,7 @@ class ExtensionsPanel;
 class FileWatcher;
 class GitClient;
 class KeybindManager;
+class LspManager;
 class OutlinePanel;
 class QuickOpen;
 class RecentManager;
@@ -32,6 +34,8 @@ class StatusBar;
 class TextDocument;
 class ThemeManager;
 class Theme;
+class TodoPanel;
+class UpdateChecker;
 class Workspace;
 
 class MainWindow : public QMainWindow {
@@ -50,6 +54,7 @@ public:
     void openFolderDialog();
     void openFile(const QString& path, bool preview = false, bool addToRecents = true);
     void showRecoveryDialog();
+    void setZenMode(bool on);
 
     // session
     QJsonObject sessionState() const;
@@ -75,6 +80,8 @@ private:
     void updateStatusFor(TextDocument* doc);
     void showFind(bool replace);
     void openRecentPath(const QString& path);
+    CodeEditor* activeEditor() const;
+    void setupUpdateChecker();
 
     // members
     QMenu* m_recentMenu = nullptr;
@@ -95,6 +102,8 @@ private:
     DocumentManager* m_documents = nullptr;
     SessionManager* m_session = nullptr;
     ExtensionHost* m_extensions = nullptr;
+    LspManager* m_lsp = nullptr;
+    UpdateChecker* m_updates = nullptr;
 
     // ui (owned)
     QToolBar* m_activityBar = nullptr;
@@ -105,6 +114,7 @@ private:
     QWidget* m_buildPanel = nullptr;
     OutlinePanel* m_outline = nullptr;
     ExtensionsPanel* m_extensionsPanel = nullptr;
+    TodoPanel* m_todos = nullptr;
     EditorArea* m_editorArea = nullptr;
     BottomPanel* m_bottom = nullptr;
     StatusBar* m_status = nullptr;
@@ -113,8 +123,14 @@ private:
     QStackedWidget* m_centerStack = nullptr;
     QWidget* m_welcome = nullptr;
 
+    // zen mode + misc
     bool m_quitConfirmed = false;
     bool m_restoring = false;
+    bool m_zen = false;
+    bool m_zenSidebarVisible = false;
+    bool m_zenBottomVisible = false;
+    QTimer m_todoRefreshTimer;
+    QHash<QString, QString> m_docPaths;   // docId -> path (for LSP close)
 };
 
 }  // namespace cf

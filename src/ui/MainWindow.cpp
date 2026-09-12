@@ -30,10 +30,13 @@
 #include "editor/CodeEditor.h"
 #include "editor/EditorArea.h"
 #include "editor/EditorGroup.h"
+#include "app/UpdateChecker.h"
+#include "filesystem/EditorConfig.h"
 #include "filesystem/FileWatcher.h"
 #include "filesystem/FileTreeModel.h"
 #include "git/GitClient.h"
 #include "git/GitPanel.h"
+#include "lsp/LspManager.h"
 #include "project/RecentManager.h"
 #include "project/SessionManager.h"
 #include "project/Workspace.h"
@@ -53,7 +56,12 @@
 #include "ui/OutlinePanel.h"
 #include "ui/QuickOpen.h"
 #include "ui/StatusBar.h"
+#include "ui/TodoPanel.h"
 #include "ui/WelcomePage.h"
+
+#include <QDesktopServices>
+#include <QToolTip>
+#include <QUrl>
 
 namespace cf {
 
@@ -78,6 +86,8 @@ MainWindow::MainWindow(QWidget* parent)
     m_documents = &DocumentManager::instance();
     m_session = new SessionManager(this);
     m_extensions = new ExtensionHost(this);
+    m_lsp = new LspManager(this);
+    m_updates = new UpdateChecker(this);
 
     buildUi();
     buildMenus();
@@ -136,12 +146,14 @@ void MainWindow::buildUi()
     m_buildPanel = new BuildPanel(m_build, this);
     m_outline = new OutlinePanel(m_editorArea, this);
     m_extensionsPanel = new ExtensionsPanel(m_extensions, this);
+    m_todos = new TodoPanel(m_workspace, this);
     m_sidebar->addWidget(m_explorer);        // 0 Explorer
     m_sidebar->addWidget(m_searchPanel);     // 1 Search
     m_sidebar->addWidget(m_gitPanel);        // 2 Source Control
     m_sidebar->addWidget(m_buildPanel);      // 3 Build
     m_sidebar->addWidget(m_outline);         // 4 Outline
     m_sidebar->addWidget(m_extensionsPanel); // 5 Extensions
+    m_sidebar->addWidget(m_todos);           // 6 TODO
 
     // ---- Activity bar ----
     m_activityBar = new QToolBar(this);
@@ -159,6 +171,7 @@ void MainWindow::buildUi()
         { "Build", Icons::Name::Play, 3 },
         { "Outline", Icons::Name::Outline, 4 },
         { "Extensions", Icons::Name::Puzzle, 5 },
+        { "TODO", Icons::Name::Checklist, 6 },
     };
     auto* actionGroup = new QActionGroup(this);
     for (const Activity& a : activities) {
@@ -304,6 +317,20 @@ void MainWindow::buildMenus()
         c.select(QTextCursor::LineUnderCursor);
         g->currentEditor()->setTextCursor(c);
     });
+    selection->addSeparator();
+    selection->addAction(tr("Add Cursor At Click (Alt+Click)"), this, [this]() {});
+    selection->addAction(tr("Add Next Occurrence"), QKeySequence(QStringLiteral("Ctrl+D")), this, [this]() {
+        if (CodeEditor* ed = activeEditor()) ed->addNextOccurrence();
+    });
+    selection->addAction(tr("Skip Occurrence"), QKeySequence(QStringLiteral("Ctrl+K Ctrl+D")), this, [this]() {
+        if (CodeEditor* ed = activeEditor()) ed->skipOccurrence();
+    });
+    selection->addAction(tr("Add Cursor Above"), QKeySequence(QStringLiteral("Ctrl+Alt+Up")), this, [this]() {
+        if (CodeEditor* ed = activeEditor()) ed->addCursorAbove();
+    });
+    selection->addAction(tr("Add Cursor Below"), QKeySequence(QStringLiteral("Ctrl+Alt+Down")), this, [this]() {
+        if (CodeEditor* ed = activeEditor()) ed->addCursorBelow();
+    });
 
     // View
     QMenu* view = mb->addMenu(tr("&View"));
@@ -326,6 +353,22 @@ void MainWindow::buildMenus()
     view->addAction(tr("&Word Wrap"), QKeySequence(QStringLiteral("Alt+Z")), this, [this]() {
         const bool on = !m_settings->getBool(QStringLiteral("editor.wordWrap"));
         m_settings->set(QStringLiteral("editor.wordWrap"), on);
+    });
+    view->addSeparator();
+    view->addAction(tr("Markdown &Preview"), QKeySequence(QStringLiteral("Ctrl+Shift+V")), this, [this]() {
+        if (EditorGroup* g = m_editorArea->activeGroup()) g->toggleMarkdownPreview();
+    });
+    view->addAction(tr("&Zen Mode"), QKeySequence(QStringLiteral("Ctrl+K Z")), this, [this]() { setZenMode(!m_zen); });
+    view->addSeparator();
+    QMenu* bookmarkMenu = view->addMenu(tr("&Bookmarks"));
+    bookmarkMenu->addAction(tr("Toggle Bookmark"), QKeySequence(QStringLiteral("Ctrl+F2")), this, [this]() {
+        if (CodeEditor* ed = activeEditor()) ed->toggleBookmark();
+    });
+    bookmarkMenu->addAction(tr("Next Bookmark"), QKeySequence(QStringLiteral("F2")), this, [this]() {
+        if (CodeEditor* ed = activeEditor()) ed->nextBookmark();
+    });
+    bookmarkMenu->addAction(tr("Previous Bookmark"), QKeySequence(QStringLiteral("Shift+F2")), this, [this]() {
+        if (CodeEditor* ed = activeEditor()) ed->previousBookmark();
     });
     view->addSeparator();
     QMenu* themeMenu = view->addMenu(tr("&Color Theme"));
@@ -352,6 +395,20 @@ void MainWindow::buildMenus()
     go->addAction(tr("Go to &File..."), QKeySequence(QStringLiteral("Ctrl+P")), this, [this]() { m_quickOpen->openFiles(); });
     go->addAction(tr("Go to &Symbol..."), QKeySequence(QStringLiteral("Ctrl+Shift+O")), this, [this]() { m_quickOpen->openSymbols(); });
     go->addAction(tr("Go to &Line..."), QKeySequence(QStringLiteral("Ctrl+G")), this, [this]() { m_quickOpen->openGotoLine(); });
+    go->addAction(tr("Go to &Definition"), QKeySequence(QStringLiteral("F12")), this, [this]() {
+        CodeEditor* ed = activeEditor();
+        TextDocument* doc = activeDocument();
+        if (!ed || !doc || doc->isUntitled()) return;
+        QTextCursor c = ed->textCursor();
+        QPointer<CodeEditor> guard(ed);
+        m_lsp->definition(doc, c.blockNumber(), c.positionInBlock(), [this, guard](const QString& path, int line, int col) {
+            if (path.isEmpty() || line < 0) return;
+            openFile(path, false, false);
+            EditorGroup* g = m_editorArea->activeGroup();
+            if (g && g->currentEditor()) g->currentEditor()->gotoLine(line, col);
+            Q_UNUSED(guard);
+        });
+    });
 
     // Run
     QMenu* run = mb->addMenu(tr("&Run"));
@@ -387,6 +444,7 @@ void MainWindow::buildMenus()
     help->addAction(tr("&Welcome"), QKeySequence(QStringLiteral("Ctrl+Shift+W")), this, [this]() {
         m_centerStack->setCurrentIndex(0);
     });
+    help->addAction(tr("Check for &Updates..."), this, [this]() { m_updates->checkNow(); });
     help->addAction(tr("&About CodeForge"), this, [this]() {
         QMessageBox::about(this, tr("About CodeForge"),
             tr("<b>CodeForge %1</b><br>A lightweight native code editor for Windows.<br>"
@@ -535,6 +593,64 @@ void MainWindow::registerCommands()
         if (!m_build->isCMakeProject()) return;
         m_bottom->show();
         m_build->runExecutable(m_build->detectExecutable());
+    });
+
+    // ---- v1.1 commands: multi-cursor, bookmarks, markdown, hover, zen, todo, updates ----
+    add(QStringLiteral("editor.selectNextOccurrence"), QStringLiteral("Editor"), QStringLiteral("Add Next Occurrence"), QKeySequence(QStringLiteral("Ctrl+D")), [this]() {
+        if (CodeEditor* ed = activeEditor()) ed->addNextOccurrence();
+    });
+    add(QStringLiteral("editor.skipOccurrence"), QStringLiteral("Editor"), QStringLiteral("Skip Occurrence"), QKeySequence(QStringLiteral("Ctrl+K Ctrl+D")), [this]() {
+        if (CodeEditor* ed = activeEditor()) ed->skipOccurrence();
+    });
+    add(QStringLiteral("editor.addCursorAbove"), QStringLiteral("Editor"), QStringLiteral("Add Cursor Above"), QKeySequence(QStringLiteral("Ctrl+Alt+Up")), [this]() {
+        if (CodeEditor* ed = activeEditor()) ed->addCursorAbove();
+    });
+    add(QStringLiteral("editor.addCursorBelow"), QStringLiteral("Editor"), QStringLiteral("Add Cursor Below"), QKeySequence(QStringLiteral("Ctrl+Alt+Down")), [this]() {
+        if (CodeEditor* ed = activeEditor()) ed->addCursorBelow();
+    });
+    add(QStringLiteral("editor.bookmarkToggle"), QStringLiteral("Editor"), QStringLiteral("Toggle Bookmark"), QKeySequence(QStringLiteral("Ctrl+F2")), [this]() {
+        if (CodeEditor* ed = activeEditor()) ed->toggleBookmark();
+    });
+    add(QStringLiteral("editor.bookmarkNext"), QStringLiteral("Editor"), QStringLiteral("Next Bookmark"), QKeySequence(QStringLiteral("F2")), [this]() {
+        if (CodeEditor* ed = activeEditor()) ed->nextBookmark();
+    });
+    add(QStringLiteral("editor.bookmarkPrev"), QStringLiteral("Editor"), QStringLiteral("Previous Bookmark"), QKeySequence(QStringLiteral("Shift+F2")), [this]() {
+        if (CodeEditor* ed = activeEditor()) ed->previousBookmark();
+    });
+    add(QStringLiteral("markdown.openPreview"), QStringLiteral("Markdown"), QStringLiteral("Open Markdown Preview"), QKeySequence(QStringLiteral("Ctrl+Shift+V")), [this]() {
+        if (EditorGroup* g = m_editorArea->activeGroup()) g->toggleMarkdownPreview();
+    });
+    add(QStringLiteral("editor.showHover"), QStringLiteral("Editor"), QStringLiteral("Show Hover (language server)"), QKeySequence(QStringLiteral("Ctrl+K Ctrl+I")), [this]() {
+        CodeEditor* ed = activeEditor();
+        TextDocument* doc = activeDocument();
+        if (!ed || !doc || doc->isUntitled()) return;
+        QTextCursor c = ed->textCursor();
+        QPointer<CodeEditor> guard(ed);
+        m_lsp->hover(doc, c.blockNumber(), c.positionInBlock(), [guard](const QString& html) {
+            if (html.isEmpty() || !guard) return;
+            QToolTip::showText(guard->cursorRect().bottomRight() + QPoint(0, 8), html, guard);
+        });
+    });
+    add(QStringLiteral("editor.gotoDefinition"), QStringLiteral("Go"), QStringLiteral("Go to Definition"), QKeySequence(QStringLiteral("F12")), [this]() {
+        CodeEditor* ed = activeEditor();
+        TextDocument* doc = activeDocument();
+        if (!ed || !doc || doc->isUntitled()) return;
+        QTextCursor c = ed->textCursor();
+        m_lsp->definition(doc, c.blockNumber(), c.positionInBlock(), [this](const QString& path, int line, int col) {
+            if (path.isEmpty() || line < 0) return;
+            openFile(path, false, false);
+            EditorGroup* g = m_editorArea->activeGroup();
+            if (g && g->currentEditor()) g->currentEditor()->gotoLine(line, col);
+        });
+    });
+    add(QStringLiteral("view.zenMode"), QStringLiteral("View"), QStringLiteral("Toggle Zen Mode"), QKeySequence(QStringLiteral("Ctrl+K Z")), [this]() {
+        setZenMode(!m_zen);
+    });
+    add(QStringLiteral("view.todos"), QStringLiteral("View"), QStringLiteral("Show TODO List"), QKeySequence(), [this]() {
+        m_sidebar->setCurrentIndex(6); m_sidebar->show(); m_todos->refresh();
+    });
+    add(QStringLiteral("workbench.checkForUpdates"), QStringLiteral("Help"), QStringLiteral("Check for Updates"), QKeySequence(), [this]() {
+        m_updates->checkNow();
     });
 
     // Wire registered shortcuts.
@@ -697,6 +813,18 @@ void MainWindow::connectSubsystems()
         m_build->setWorkspaceRoot(root);
         m_bottom->terminal()->setWorkingDir(root);
         m_git->refresh(root);
+        m_lsp->configure(root);
+        if (m_settings->getBool(QStringLiteral("files.editorconfig"))) {
+            for (TextDocument* doc : m_documents->documents()) {
+                if (!doc->isUntitled()) doc->setEditorConfig(EditorConfig::resolve(doc->filePath(), root));
+            }
+            for (EditorGroup* g : m_editorArea->groups()) {
+                for (TextDocument* d : g->documents()) {
+                    if (CodeEditor* ed = g->editorForDoc(d)) ed->applyEditorConfig();
+                }
+            }
+        }
+        m_todos->refresh();
         if (!root.isEmpty()) {
             m_recents->addProject(root);
             setWindowTitle(QFileInfo(root).fileName() + QStringLiteral(" — CodeForge"));
@@ -806,6 +934,100 @@ void MainWindow::connectSubsystems()
         if (key == QLatin1String("security.clipboardClearSeconds"))
             clipboardGuard->setClearAfterSeconds(SettingsManager::instance().getInt(key));
     });
+
+    // ---- LSP: document lifecycle, diagnostics -> Problems + editor squiggles ----
+    connect(m_documents, &DocumentManager::documentOpened, this, [this](TextDocument* doc) {
+        m_docPaths.insert(doc->docId(), doc->filePath());
+        if (!doc->isUntitled() && m_settings->getBool(QStringLiteral("files.editorconfig")))
+            doc->setEditorConfig(EditorConfig::resolve(doc->filePath(), m_workspace->rootPath()));
+        m_lsp->handleDocumentOpened(doc);
+    });
+    connect(m_documents, &DocumentManager::documentClosed, this, [this](const QString& docId) {
+        const QString path = m_docPaths.take(docId);
+        m_lsp->handleDocumentClosed(docId, path);
+    });
+    connect(m_lsp, &LspManager::diagnosticsUpdated, this, [this](const QString& path) {
+        const QVector<Diagnostic> diags = m_lsp->diagnosticsFor(path);
+        m_bottom->updateDiagnostics(path, diags);
+        for (EditorGroup* g : m_editorArea->groups()) {
+            for (TextDocument* d : g->documents()) {
+                if (d->filePath() == path) {
+                    if (CodeEditor* ed = g->editorForDoc(d)) ed->setDiagnostics(diags);
+                }
+            }
+        }
+    });
+
+    // ---- TODO panel: auto refresh on workspace changes (debounced) ----
+    m_todoRefreshTimer.setSingleShot(true);
+    m_todoRefreshTimer.setInterval(2500);
+    connect(&m_todoRefreshTimer, &QTimer::timeout, m_todos, &TodoPanel::refresh);
+    connect(m_documents, &DocumentManager::documentSaved, this, [this](TextDocument* doc) {
+        if (doc && m_workspace->isOpen() && m_todos->isVisible()) m_todoRefreshTimer.start();
+    });
+    connect(m_todos, &TodoPanel::resultActivated, this, [this](const QString& path, int line, int col) {
+        openFile(path, false, false);
+        EditorGroup* g = m_editorArea->activeGroup();
+        if (g && g->currentEditor()) g->currentEditor()->gotoLine(line, col);
+    });
+
+    setupUpdateChecker();
+}
+
+// ---------------- zen mode / helpers ----------------
+
+void MainWindow::setZenMode(bool on)
+{
+    if (m_zen == on) return;
+    m_zen = on;
+    if (on) {
+        m_zenSidebarVisible = m_sidebar->isVisible();
+        m_zenBottomVisible = m_bottom->isVisible();
+        m_sidebar->hide();
+        m_bottom->hide();
+        m_activityBar->hide();
+        m_breadcrumbs->hide();
+        statusBar()->hide();
+    } else {
+        m_sidebar->setVisible(m_zenSidebarVisible);
+        m_bottom->setVisible(m_zenBottomVisible);
+        m_activityBar->show();
+        m_breadcrumbs->show();
+        statusBar()->show();
+    }
+}
+
+CodeEditor* MainWindow::activeEditor() const
+{
+    EditorGroup* g = m_editorArea ? m_editorArea->activeGroup() : nullptr;
+    return g ? g->currentEditor() : nullptr;
+}
+
+void MainWindow::setupUpdateChecker()
+{
+    connect(m_updates, &UpdateChecker::checkStarted, this, [this]() {
+        statusBar()->showMessage(tr("Checking for updates..."), 4000);
+    });
+    connect(m_updates, &UpdateChecker::updateAvailable, this, [this](const QString& current, const QString& latest, const QString& url) {
+        QMessageBox box(this);
+        box.setWindowTitle(tr("Update Available"));
+        box.setIcon(QMessageBox::Information);
+        box.setText(tr("CodeForge %1 is available (you have %2).").arg(latest, current));
+        QAbstractButton* open = box.addButton(tr("Open Releases Page"), QMessageBox::AcceptRole);
+        box.addButton(QMessageBox::Ok);
+        Q_UNUSED(open);
+        box.exec();
+        if (box.clickedButton() == open)
+            QDesktopServices::openUrl(QUrl(url));
+    });
+    connect(m_updates, &UpdateChecker::upToDate, this, [this]() {
+        statusBar()->showMessage(tr("CodeForge is up to date."), 5000);
+    });
+    connect(m_updates, &UpdateChecker::checkFailed, this, [this](const QString& err) {
+        statusBar()->showMessage(tr("Update check failed: %1").arg(err), 5000);
+    });
+    // Offline-first: only pings the network when the user opted in.
+    QTimer::singleShot(5000, this, [this]() { m_updates->maybeCheckOnStartup(); });
 }
 
 // ---------------- status / docs ----------------

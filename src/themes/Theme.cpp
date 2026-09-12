@@ -41,6 +41,13 @@ QColor Theme::color(const QString& token) const
     return QColor(0xf8, 0xf8, 0xf8);
 }
 
+QColor Theme::color(const QString& token, const QColor& fallback) const
+{
+    const auto it = m_colors.constFind(token);
+    if (it != m_colors.constEnd()) return QColor(*it);
+    return fallback;
+}
+
 QStringList Theme::knownTokens()
 {
     return {

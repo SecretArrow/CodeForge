@@ -73,6 +73,10 @@ void SettingsManager::buildSchema()
           { { QStringLiteral("Line"), QStringLiteral("line") }, { QStringLiteral("Block"), QStringLiteral("block") }, { QStringLiteral("Underline"), QStringLiteral("underline") } } },
         { QStringLiteral("editor.cursorBlinking"), QStringLiteral("Editor"), QStringLiteral("Cursor blinking"),
           QString(), T::Bool, true, {} },
+        { QStringLiteral("editor.bracketPairColorization"), QStringLiteral("Editor"), QStringLiteral("Bracket pair colorization"),
+          QStringLiteral("Colorize matching bracket pairs by nesting depth."), T::Bool, true, {} },
+        { QStringLiteral("editor.stickyScroll"), QStringLiteral("Editor"), QStringLiteral("Sticky scroll"),
+          QStringLiteral("Show the enclosing scope header pinned at the top of the editor."), T::Bool, true, {} },
 
         // ---- Files ----
         { QStringLiteral("files.autosave"), QStringLiteral("Files"), QStringLiteral("Autosave"),
@@ -92,6 +96,8 @@ void SettingsManager::buildSchema()
           { { QStringLiteral("Auto (platform)"), QStringLiteral("auto") }, { QStringLiteral("LF"), QStringLiteral("lf") }, { QStringLiteral("CRLF"), QStringLiteral("crlf") } } },
         { QStringLiteral("files.largeFileWarningMB"), QStringLiteral("Files"), QStringLiteral("Large file warning (MB)"),
           QStringLiteral("Ask before opening files larger than this size. Set 0 to disable."), T::Int, 50, {}, 0, 4096 },
+        { QStringLiteral("files.editorconfig"), QStringLiteral("Files"), QStringLiteral("Respect .editorconfig"),
+          QStringLiteral("Apply indent style/size, EOL and whitespace rules from .editorconfig files."), T::Bool, true, {} },
 
         // ---- Search ----
         { QStringLiteral("search.excludeGlobs"), QStringLiteral("Search"), QStringLiteral("Excluded patterns"),
@@ -123,6 +129,14 @@ void SettingsManager::buildSchema()
         { QStringLiteral("security.encryptRecovery"), QStringLiteral("Security"), QStringLiteral("Encrypt recovery snapshots"),
           QStringLiteral("AES-256-GCM with an OS-protected key. Never store editor content in plaintext."), T::Bool, true, {} },
 
+        // ---- Extensions (Language Servers) ----
+        { QStringLiteral("lsp.enabled"), QStringLiteral("Extensions"), QStringLiteral("Enable language servers"),
+          QStringLiteral("Run configured language servers for diagnostics, hover and go-to-definition."), T::Bool, true, {} },
+        { QStringLiteral("lsp.servers"), QStringLiteral("Extensions"), QStringLiteral("Language servers"),
+          QStringLiteral("One entry per language: \"languageId=command [args...]\" e.g. cpp=clangd or "
+                         "python=pyright-langserver --stdio"),
+          T::StringList, QStringList{}, {} },
+
         // ---- Workspace ----
         { QStringLiteral("workspace.rememberSession"), QStringLiteral("Workspace"), QStringLiteral("Restore session on start"),
           QStringLiteral("Reopen last workspace, tabs and layout."), T::Bool, true, {} },
@@ -137,6 +151,11 @@ void SettingsManager::buildSchema()
         // ---- Performance ----
         { QStringLiteral("performance.fileIndexLimit"), QStringLiteral("Performance"), QStringLiteral("File index limit"),
           QStringLiteral("Maximum number of files indexed for Quick Open."), T::Int, 50000, {}, 1000, 500000 },
+
+        // ---- Updates ----
+        { QStringLiteral("updates.checkOnStartup"), QStringLiteral("Updates"), QStringLiteral("Check for updates on startup"),
+          QStringLiteral("Query the GitHub Releases API once at startup. Offline-first: disabled by default, "
+                         "and CodeForge never downloads anything automatically."), T::Bool, false, {} },
     };
 }
 

@@ -127,18 +127,54 @@ void BottomPanel::appendOutput(const QString& category, const QString& text)
 
 void BottomPanel::setProblems(const QVector<BuildProblem>& problems)
 {
+    m_buildProblems = problems;
+    rebuildProblems();
+}
+
+void BottomPanel::updateDiagnostics(const QString& file, const QVector<cf::Diagnostic>& diags)
+{
+    if (diags.isEmpty()) m_lspDiags.remove(file);
+    else m_lspDiags.insert(file, diags);
+    rebuildProblems();
+}
+
+void BottomPanel::addProblemRow(const QString& severityText, Icons::Name icon, const QString& code,
+                                const QString& message, const QString& file, int line, int column)
+{
+    auto* item = new QTreeWidgetItem(m_problems);
+    item->setText(0, severityText);
+    item->setText(1, code.isEmpty() ? message : QStringLiteral("%1: %2").arg(code, message));
+    item->setText(2, file);
+    item->setText(3, line > 0 ? QString::number(line) : QString());
+    item->setData(0, Qt::UserRole, file);
+    item->setData(0, Qt::UserRole + 1, line - 1);
+    item->setData(0, Qt::UserRole + 2, column - 1);
+    item->setIcon(0, Icons::icon(icon));
+}
+
+void BottomPanel::rebuildProblems()
+{
     m_problems->clear();
-    m_problemCount = problems.size();
-    for (const BuildProblem& p : problems) {
-        auto* item = new QTreeWidgetItem(m_problems);
-        item->setText(0, p.severity == BuildProblem::Error ? tr("error") : tr("warning"));
-        item->setText(1, p.code.isEmpty() ? p.message : QStringLiteral("%1: %2").arg(p.code, p.message));
-        item->setText(2, p.file);
-        item->setText(3, p.line > 0 ? QString::number(p.line) : QString());
-        item->setData(0, Qt::UserRole, p.file);
-        item->setData(0, Qt::UserRole + 1, p.line - 1);
-        item->setData(0, Qt::UserRole + 2, p.column - 1);
-        item->setIcon(0, Icons::icon(p.severity == BuildProblem::Error ? Icons::Name::Error : Icons::Name::Warning));
+    m_problemCount = 0;
+
+    for (const BuildProblem& p : m_buildProblems) {
+        addProblemRow(p.severity == BuildProblem::Error ? tr("error") : tr("warning"),
+                      p.severity == BuildProblem::Error ? Icons::Name::Error : Icons::Name::Warning,
+                      p.code, p.message, p.file, p.line, p.column);
+        ++m_problemCount;
+    }
+
+    for (auto it = m_lspDiags.constBegin(); it != m_lspDiags.constEnd(); ++it) {
+        for (const Diagnostic& d : it.value()) {
+            if (d.severity == Diagnostic::Hint || d.severity == Diagnostic::Info) {
+                addProblemRow(tr("info"), Icons::Name::Info, d.source, d.message, it.key(), d.line + 1, d.column + 1);
+            } else {
+                addProblemRow(d.severity == Diagnostic::Error ? tr("error") : tr("warning"),
+                              d.severity == Diagnostic::Error ? Icons::Name::Error : Icons::Name::Warning,
+                              d.source, d.message, it.key(), d.line + 1, d.column + 1);
+            }
+            ++m_problemCount;
+        }
     }
 }
 

@@ -242,6 +242,17 @@ void Icons::paint(Name name, QPainter& p, const QColor& color, int size)
         p.drawLine(QPointF(m + w*0.38, m + w*0.25), QPointF(m + w*0.38, m + w*0.12));
         p.drawLine(QPointF(m + w*0.62, m + w*0.25), QPointF(m + w*0.62, m + w*0.12));
         break;
+    case Name::Checklist:
+        p.drawRoundedRect(QRectF(m + w*0.12, m + w*0.12, w*0.76, w*0.76), 1, 1);
+        // checkboxes column
+        p.drawLine(QPointF(m + w*0.24, m + w*0.32), QPointF(m + w*0.32, m + w*0.40));
+        p.drawLine(QPointF(m + w*0.32, m + w*0.40), QPointF(m + w*0.44, m + w*0.22));
+        p.drawLine(QPointF(m + w*0.24, m + w*0.62), QPointF(m + w*0.32, m + w*0.70));
+        p.drawLine(QPointF(m + w*0.32, m + w*0.70), QPointF(m + w*0.44, m + w*0.52));
+        // text lines
+        p.drawLine(QPointF(m + w*0.54, m + w*0.32), QPointF(m + w*0.82, m + w*0.32));
+        p.drawLine(QPointF(m + w*0.54, m + w*0.62), QPointF(m + w*0.82, m + w*0.62));
+        break;
     }
 }
 

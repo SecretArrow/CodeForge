@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(CodeForge VERSION 1.0.0 LANGUAGES CXX)
+project(CodeForge VERSION 1.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -55,7 +55,7 @@ elseif(OPENSSL_FOUND)
     target_compile_definitions(CodeForgeLib PUBLIC CF_HAVE_OPENSSL)
 endif()
 
-target_compile_definitions(CodeForgeLib PRIVATE CF_APP_VERSION="1.0.0" QT_MESSAGELOGCONTEXT)
+target_compile_definitions(CodeForgeLib PRIVATE CF_APP_VERSION="1.1.0" QT_MESSAGELOGCONTEXT)
 
 if(MSVC)
     target_compile_options(CodeForgeLib PRIVATE /W4 /permissive- /Zc:__cplusplus /utf-8)

@@ -13,7 +13,7 @@ public:
         File, Folder, FolderOpen, Search, GitBranch, Play, Puzzle, Gear,
         Terminal, Close, DotModified, Pin, SplitRight, Plus, Refresh,
         CollapseAll, Warning, Error, Info, Save, Book, Lock, NewFile,
-        NewFolder, Filter, Outline, ChevronRight, ChevronDown, Copy, Trash
+        NewFolder, Filter, Outline, ChevronRight, ChevronDown, Copy, Trash, Checklist
     };
 
     static QIcon icon(Name name, const QColor& color);

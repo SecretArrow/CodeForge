@@ -6,13 +6,24 @@
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
+#include "core/Common.h"
 #include "core/DocumentManager.h"
 #include "editor/CodeEditor.h"
 #include "editor/FindReplaceBar.h"
+#include "editor/ImagePreview.h"
+#include "editor/MarkdownPreview.h"
 #include "editor/TabBar.h"
 #include "themes/ThemeManager.h"
 
+#include <QSplitter>
+
 namespace cf {
+
+bool isMarkdownFile(const QString& path)
+{
+    const QString ext = fileExtensionOf(path);
+    return ext == QLatin1String("md") || ext == QLatin1String("markdown");
+}
 
 EditorGroup::EditorGroup(QWidget* parent)
     : QWidget(parent)
@@ -58,10 +69,20 @@ bool EditorGroup::eventFilter(QObject* watched, QEvent* event)
     return QWidget::eventFilter(watched, event);
 }
 
+QWidget* EditorGroup::createView(TextDocument* doc)
+{
+    if (isImageFile(doc->filePath())) {
+        auto* preview = new ImagePreview(doc, m_stack);
+        return preview;
+    }
+    return createEditor(doc);
+}
+
 CodeEditor* EditorGroup::createEditor(TextDocument* doc)
 {
     auto* editor = new CodeEditor(doc, m_stack);
     editor->applySettings();
+    editor->applyEditorConfig();
     editor->applyTheme(ThemeManager::instance().currentTheme());
     connect(editor, &CodeEditor::focusGained, this, [this]() { emit focusActivated(this); });
     connect(editor, &CodeEditor::contextRequested, this, [this, editor](const QPoint& globalPos) {
@@ -100,14 +121,14 @@ void EditorGroup::openDocument(TextDocument* doc, bool preview)
     // Preview mode replaces the existing preview tab.
     if (preview && m_previewIndex >= 0 && m_previewIndex < m_docs.size()) {
         const int pi = m_previewIndex;
-        CodeEditor* oldEditor = qobject_cast<CodeEditor*>(m_stack->widget(pi));
+        QWidget* oldView = m_stack->widget(pi);
         m_docs[pi] = doc;
         m_pinned[pi] = false;
-        if (oldEditor) {
-            m_stack->removeWidget(oldEditor);
-            oldEditor->deleteLater();
+        if (oldView) {
+            m_stack->removeWidget(oldView);
+            oldView->deleteLater();
         }
-        m_stack->insertWidget(pi, createEditor(doc));
+        m_stack->insertWidget(pi, createView(doc));
         m_tabs->setTabData(pi, doc->docId());
         m_tabs->updateTab(pi, doc->displayName(), doc->isDirty(), false, preview, doc->isReadOnly());
         activateTab(pi);
@@ -118,7 +139,7 @@ void EditorGroup::openDocument(TextDocument* doc, bool preview)
     m_docs.append(doc);
     m_pinned.append(false);
     if (preview) m_previewIndex = index;
-    m_stack->addWidget(createEditor(doc));
+    m_stack->addWidget(createView(doc));
     m_tabs->addTab(doc->displayName());
     m_tabs->setTabData(index, doc->docId());
     m_tabs->updateTab(index, doc->displayName(), doc->isDirty(), false, preview, doc->isReadOnly());
@@ -326,7 +347,7 @@ void EditorGroup::insertTabAt(TextDocument* doc, int index)
     if (!doc) return;
     m_docs.insert(index, doc);
     m_pinned.insert(index, false);
-    m_stack->insertWidget(index, createEditor(doc));
+    m_stack->insertWidget(index, createView(doc));
     m_tabs->insertTab(index, doc->displayName());
     m_tabs->setTabData(index, doc->docId());
     connectDocSignals(doc);
@@ -335,8 +356,47 @@ void EditorGroup::insertTabAt(TextDocument* doc, int index)
 
 void EditorGroup::showFind(bool replace)
 {
+    if (!currentEditor()) return;   // image viewer has no text to search
     if (replace) m_find->openReplace();
     else m_find->openFind();
+}
+
+void EditorGroup::toggleMarkdownPreview()
+{
+    if (m_markdownPreview) {
+        // Tear down: restore the stack directly into the layout.
+        layout()->removeWidget(m_previewSplitter);
+        m_previewSplitter->hide();
+        m_previewSplitter->deleteLater();
+        m_previewSplitter = nullptr;
+        m_markdownPreview = nullptr;
+        static_cast<QVBoxLayout*>(layout())->addWidget(m_stack, 1);
+        m_stack->show();
+        return;
+    }
+
+    TextDocument* doc = currentDocument();
+    if (!doc || !isMarkdownFile(doc->filePath())) {
+        emit statusMessage(QStringLiteral("markdown-preview-unavailable"));
+        return;
+    }
+
+    m_markdownPreview = new MarkdownPreview(this);
+    m_previewSplitter = new QSplitter(Qt::Vertical, this);
+    m_previewSplitter->setChildrenCollapsible(false);
+    layout()->removeWidget(m_stack);
+    m_previewSplitter->addWidget(m_stack);
+    m_previewSplitter->addWidget(m_markdownPreview);
+    m_previewSplitter->setStretchFactor(0, 3);
+    m_previewSplitter->setStretchFactor(1, 2);
+    m_previewSplitter->setSizes({ 600, 300 });
+    static_cast<QVBoxLayout*>(layout())->addWidget(m_previewSplitter, 1);
+
+    m_markdownPreview->setDocument(doc);
+    connect(this, &EditorGroup::currentDocChanged, m_markdownPreview, [this](TextDocument* d) {
+        if (m_markdownPreview)
+            m_markdownPreview->setDocument(d && isMarkdownFile(d->filePath()) ? d : nullptr);
+    });
 }
 
 void EditorGroup::refreshTabs()

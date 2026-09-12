@@ -60,7 +60,8 @@ SettingsDialog::SettingsDialog(SettingsManager* settings, KeybindManager* keybin
     m_categories = new QListWidget(this);
     m_categories->setFixedWidth(180);
     for (const QString& page : { tr("Editor"), tr("Appearance"), tr("Files"), tr("Search"), tr("Terminal"),
-                                 tr("Keyboard"), tr("Security"), tr("Workspace"), tr("Extensions"), tr("Performance") })
+                                 tr("Keyboard"), tr("Security"), tr("Workspace"), tr("Extensions"),
+                                 tr("Performance"), tr("Updates") })
         m_categories->addItem(page);
     layout->addWidget(m_categories);
 
@@ -75,8 +76,9 @@ SettingsDialog::SettingsDialog(SettingsManager* settings, KeybindManager* keybin
     m_pages->addWidget(buildKeyboardPage());
     m_pages->addWidget(buildSchemaPage(QStringLiteral("Security")));
     m_pages->addWidget(buildSchemaPage(QStringLiteral("Workspace")));
-    m_pages->addWidget(buildExtensionsStubPage());
+    m_pages->addWidget(buildSchemaPage(QStringLiteral("Extensions")));
     m_pages->addWidget(buildSchemaPage(QStringLiteral("Performance")));
+    m_pages->addWidget(buildSchemaPage(QStringLiteral("Updates")));
 
     connect(m_categories, &QListWidget::currentRowChanged, this, &SettingsDialog::onPageChanged);
     m_categories->setCurrentRow(0);
@@ -256,20 +258,6 @@ void SettingsDialog::populateKeyboardTable()
             m_shortcutsTable->removeCellWidget(row, 1);
         });
     });
-}
-
-QWidget* SettingsDialog::buildExtensionsStubPage()
-{
-    auto* page = new QWidget(this);
-    auto* layout = new QVBoxLayout(page);
-    auto* info = new QLabel(
-        tr("Extensions are managed from the Extensions view in the Activity Bar.\n\n"
-           "Native plugins implementing the IExtension interface can be placed in:\n%1\n\n"
-           "Themes are plain JSON files and can also be dropped there.").arg(QString()), page);
-    info->setWordWrap(true);
-    layout->addWidget(info);
-    layout->addStretch(1);
-    return page;
 }
 
 void SettingsDialog::exportSettings()
