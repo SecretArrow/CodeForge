@@ -9,6 +9,7 @@
 #include "core/Common.h"
 #include "core/DocumentManager.h"
 #include "editor/CodeEditor.h"
+#include "editor/EditorServices.h"
 #include "editor/FindReplaceBar.h"
 #include "editor/ImagePreview.h"
 #include "editor/MarkdownPreview.h"
@@ -104,6 +105,7 @@ CodeEditor* EditorGroup::createEditor(TextDocument* doc)
     });
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, editor,
             [editor](const Theme& t) { editor->applyTheme(t); });
+    EditorServices::instance().notifyEditorCreated(editor);
     return editor;
 }
 
