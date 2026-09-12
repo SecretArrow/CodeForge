@@ -6,8 +6,9 @@
 namespace cf {
 namespace markdown {
 
-// ---- inline rendering ----
-// (escapeHtml is declared in the header; defined below)
+namespace {
+
+// ---- inline rendering helpers (internal) ----
 
 QString renderInline(const QString& raw)
 {
