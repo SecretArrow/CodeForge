@@ -158,7 +158,10 @@ jobs:
           # ---- Inno Setup installer ----
           choco install innosetup -y --no-progress | Out-Null
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $iscc "/DAppVersion=$env:CF_VERSION" "/DPayloadDir=build\bin" installer\CodeForge.iss
+          # ISCC resolves #define paths relative to the .iss file, so pass an
+          # absolute payload dir.
+          $payload = Join-Path (Get-Location) "build\bin"
+          & $iscc "/DAppVersion=$env:CF_VERSION" "/DPayloadDir=$payload" installer\CodeForge.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
 
           # Sign the installer itself (Authenticode on the outer exe).
