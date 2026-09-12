@@ -19,7 +19,7 @@ private slots:
 
 void TestJsonRpc::singleFrame()
 {
-    QByteArray buf = "Content-Length: 18\r\n\r\n{\"method\":\"x\"}\r\nextra";
+    QByteArray buf = "Content-Length: 14\r\n\r\n{\"method\":\"x\"}\r\nextra";
     QByteArray out;
     QVERIFY(extractFrame(buf, &out));
     QCOMPARE(out, QByteArray("{\"method\":\"x\"}"));
