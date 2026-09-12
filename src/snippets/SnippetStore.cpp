@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QTextBlock>
 #include <QTextCursor>
 #include <QFileInfo>
 #include <QTextDocument>

@@ -16,6 +16,7 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QSqlRecord>
+#include <QTableWidget>
 #include <QToolButton>
 #include <QTreeWidget>
 #include <QVBoxLayout>

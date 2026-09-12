@@ -21,7 +21,7 @@ namespace cf {
 // CompletionPopup: focusless tooltip-style list window. The editor keeps
 // keyboard focus; we only forward navigation keys from the interceptor.
 // ---------------------------------------------------------------------------
-struct CompletionPopup : QListWidget {
+class CompletionPopup : public QListWidget {
 public:
     explicit CompletionPopup(QWidget* parent)
         : QListWidget(parent)
