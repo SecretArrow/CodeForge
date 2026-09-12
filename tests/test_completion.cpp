@@ -16,7 +16,7 @@ private slots:
         QTextCursor c(&doc);
         c.setPosition(9);   // after "wor" (position 6..9)
         QCOMPARE(CompletionEngine::wordBeforeCursor(c), QStringLiteral("wor"));
-        c.setPosition(13);  // after "ld"
+        c.setPosition(12);  // after "ld" (h0..o4, space5, w6..d11, space12)
         QCOMPARE(CompletionEngine::wordBeforeCursor(c), QStringLiteral("wor_ld"));
         c.setPosition(5);   // after "hello"
         QCOMPARE(CompletionEngine::wordBeforeCursor(c), QStringLiteral("hello"));

@@ -22,7 +22,7 @@ private slots:
         DiffEngine e;
         e.compute(QStringLiteral("one\ntwo\n"), QStringLiteral("one\ntwo\n"));
         QCOMPARE(e.hunks().size(), 0);
-        QCOMPARE(e.rows().size(), 3);   // 2 lines + trailing empty line
+        QCOMPARE(e.rows().size(), 2);   // trailing newline does not add an empty row
     }
 
     void insertionDetected()
