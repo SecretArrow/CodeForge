@@ -131,8 +131,8 @@ jobs:
             [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CODESIGN_PFX_B64))
             Write-Host "Signing with repository-provided certificate"
             # Publish the public half so users can trust the publisher.
-            $x509 = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
-            $x509.Import($pfxPath, $env:CODESIGN_PFX_PASSWORD, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+            $flags = [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable
+            $x509 = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($pfxPath, $env:CODESIGN_PFX_PASSWORD, $flags)
             [IO.File]::WriteAllBytes($cerPath, $x509.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
           } else {
             Write-Host "No CODESIGN_PFX secret - generating a self-signed project certificate"
@@ -185,6 +185,9 @@ jobs:
           set -euo pipefail
           mkdir -p dist AppDir/usr/bin
           cp build/bin/CodeForge AppDir/usr/bin/CodeForge
+          # Only the SQLite driver ships; the others (Mimer/ODBC/PSQL/...) need
+          # proprietary/system dependencies that linuxdeploy cannot bundle.
+          find "${QT_ROOT_DIR}/plugins/sqldrivers" -name "*.so" ! -iname "*sqlite*" -delete 2>/dev/null || true
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
           chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
