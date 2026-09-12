@@ -21,7 +21,7 @@ QString renderInline(const QString& raw)
     while (it.hasNext()) {
         const QRegularExpressionMatch m = it.next();
         codeSpans.append(QStringLiteral("<code>%1</code>").arg(m.captured(1)));
-        text.replace(m.captured(0), QStringLiteral("\x01CF%1\x02").arg(codeSpans.size() - 1));
+        text.replace(m.captured(0), QStringLiteral("\x01" "CF%1" "\x02").arg(codeSpans.size() - 1));
     }
 
     // Images before links (image syntax is a superset prefix).
@@ -67,7 +67,7 @@ QString renderInline(const QString& raw)
 
     // Restore code spans.
     for (int i = 0; i < codeSpans.size(); ++i)
-        text.replace(QStringLiteral("\x01CF%1\x02").arg(i), codeSpans.at(i));
+        text.replace(QStringLiteral("\x01" "CF%1" "\x02").arg(i), codeSpans.at(i));
 
     return text;
 }

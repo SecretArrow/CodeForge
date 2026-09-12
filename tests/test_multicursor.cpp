@@ -1,4 +1,5 @@
 // Multi-cursor operation tests (pure cursor math, no widgets).
+#include <QTextCursor>
 #include <QTextDocument>
 #include <QtTest/QtTest>
 
