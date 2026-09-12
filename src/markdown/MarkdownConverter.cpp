@@ -182,7 +182,8 @@ QString toHtml(const QString& source)
         // ---- table ----
         if (trimmed.startsWith(QLatin1Char('|')) && i + 1 < lines.size()) {
             const QString sep = lines.at(i + 1).trimmed();
-            static const QRegularExpression sepRe(QStringLiteral(R"(^\|(\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?)$"));
+            static const QRegularExpression sepRe(
+                QStringLiteral("^\\|(\\s*:?-+:?\\s*\\|)+\\s*:?-+:?\\s*\\|?$"));
             if (sepRe.match(sep).hasMatch()) {
                 const auto splitRow = [](const QString& row) {
                     QStringList cells;

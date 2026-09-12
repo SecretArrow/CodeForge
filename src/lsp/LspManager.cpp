@@ -1,6 +1,8 @@
 #include "lsp/LspManager.h"
 
+#include <QJsonArray>
 #include <QProcess>
+#include <QTextDocument>
 
 #include "core/Logger.h"
 #include "core/TextDocument.h"
@@ -93,33 +95,26 @@ void LspManager::handleDocumentOpened(TextDocument* doc)
     if (!client) return;
     client->didOpen(doc->filePath(), doc->languageId(), doc->document()->toPlainText());
 
-    // Debounced didChange on edits.
-    auto* timer = new QTimer(doc);
+    // Debounced didChange on edits. Timer owned by the manager; the map
+    // entry is removed when the document is destroyed.
+    auto* timer = new QTimer(this);
     timer->setSingleShot(true);
     timer->setInterval(400);
-    connect(timer, &QTimer::timeout, doc, [this, doc]() {
+    connect(timer, &QTimer::timeout, this, [this, doc]() {
+        if (!m_changeTimers.contains(doc)) return;   // stale (doc closed)
         if (!doc || doc->isUntitled()) return;
         LspClient* c = clientForLanguage(doc->languageId());
         if (c && c->isRunning() && doc->document()->characterCount() < 2000000)
             c->didChange(doc->filePath(), doc->document()->toPlainText());
     });
     connect(doc->document(), &QTextDocument::contentsChange, timer, qOverload<>(&QTimer::start));
-    connect(doc, &QObject::destroyed, timer, &QTimer::deleteLater);
+    connect(doc, &QObject::destroyed, this, [this, doc]() { m_changeTimers.remove(doc); });
     m_changeTimers.insert(doc, timer);
 }
 
 void LspManager::handleDocumentClosed(const QString& docId, const QString& path)
 {
     Q_UNUSED(docId);
-    // Prune timers of destroyed documents (QPointer keys go null).
-    for (auto it = m_changeTimers.begin(); it != m_changeTimers.end();) {
-        if (it.key().isNull()) {
-            it.value()->deleteLater();
-            it = m_changeTimers.erase(it);
-        } else {
-            ++it;
-        }
-    }
     if (path.isEmpty()) return;
     m_diagnostics.remove(path);
     emit diagnosticsUpdated(path);

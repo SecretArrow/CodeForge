@@ -55,7 +55,7 @@ private:
 
     QHash<QString, LspClient*> m_clients;                 // languageId -> client
     QHash<QString, QVector<Diagnostic>> m_diagnostics;    // path -> latest diags
-    QHash<QPointer<TextDocument>, QTimer*> m_changeTimers;
+    QHash<TextDocument*, QTimer*> m_changeTimers;   // raw key: QPointer lacks qHash
     QString m_workspaceRoot;
 };
 

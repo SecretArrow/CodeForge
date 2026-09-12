@@ -139,7 +139,7 @@ void LspClient::didOpen(const QString& path, const QString& languageId, const QS
 void LspClient::didChange(const QString& path, const QString& text)
 {
     QJsonObject params;
-    QJsonObject doc = lsp::textDocumentId(path);
+    QJsonObject doc = textDocumentId(path);
     doc.insert(QStringLiteral("version"), ++m_versions[path]);
     QJsonArray changes;
     QJsonObject change;
@@ -154,7 +154,7 @@ void LspClient::didChange(const QString& path, const QString& text)
 void LspClient::didClose(const QString& path)
 {
     QJsonObject params;
-    params.insert(QStringLiteral("textDocument"), lsp::textDocumentId(path));
+    params.insert(QStringLiteral("textDocument"), textDocumentId(path));
     if (m_initialized) send(lsp::buildNotification(QStringLiteral("textDocument/didClose"), params));
     else m_queuedNotifications.append(lsp::makeFrame(lsp::buildNotification(QStringLiteral("textDocument/didClose"), params)));
 }
@@ -163,7 +163,7 @@ void LspClient::requestHover(const QString& path, int line, int col, ResponseCal
 {
     if (!m_initialized) { cb(QJsonValue(), false); return; }
     QJsonObject params;
-    params.insert(QStringLiteral("textDocument"), lsp::textDocumentId(path));
+    params.insert(QStringLiteral("textDocument"), textDocumentId(path));
     params.insert(QStringLiteral("position"), lsp::positionJson(line, col));
     const int id = m_nextId++;
     m_pending.insert(id, std::move(cb));
@@ -174,7 +174,7 @@ void LspClient::requestDefinition(const QString& path, int line, int col, Respon
 {
     if (!m_initialized) { cb(QJsonValue(), false); return; }
     QJsonObject params;
-    params.insert(QStringLiteral("textDocument"), lsp::textDocumentId(path));
+    params.insert(QStringLiteral("textDocument"), textDocumentId(path));
     params.insert(QStringLiteral("position"), lsp::positionJson(line, col));
     const int id = m_nextId++;
     m_pending.insert(id, std::move(cb));
