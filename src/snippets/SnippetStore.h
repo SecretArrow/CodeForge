@@ -9,11 +9,10 @@
 #include <QStringList>
 #include <QVector>
 
-class CodeEditor;
-
 namespace cf {
 
-class CompletionItem;
+class CodeEditor;
+struct CompletionItem;
 
 struct Snippet {
     QString trigger;

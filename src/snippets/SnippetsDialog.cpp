@@ -4,6 +4,7 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPlainTextEdit>
