@@ -126,12 +126,38 @@ jobs:
           # have to run manually - easily missed, and the app then fails to start
           # on a clean Windows with "VCRUNTIME140.dll was not found"). Copy the
           # actual runtime DLLs next to the exe so CodeForge starts out of the box.
-          $crtDir = Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio\2022" -Recurse -Directory -Filter "Microsoft.VC143.CRT" -ErrorAction SilentlyContinue |
+          $crtNames = @('msvcp140.dll','msvcp140_1.dll','msvcp140_2.dll','vcruntime140.dll','vcruntime140_1.dll')
+          # Runner images moved VS 2022 between Program Files variants over time,
+          # so probe both wildcard layouts instead of assuming one location.
+          $crtDir = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT" -Directory -ErrorAction SilentlyContinue |
             Sort-Object FullName -Descending | Select-Object -First 1
-          if (-not $crtDir) { throw "Microsoft.VC143.CRT directory not found on runner" }
-          Copy-Item "$($crtDir.FullName)\*.dll" build\bin\ -Force
-          Write-Host "CRT DLLs copied from $($crtDir.FullName):"
-          Get-ChildItem build\bin\msvcp140*.dll, build\bin\vcruntime140*.dll | Select-Object -ExpandProperty Name
+          if (-not $crtDir) {
+            $crtDir = Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT" -Directory -ErrorAction SilentlyContinue |
+              Sort-Object FullName -Descending | Select-Object -First 1
+          }
+          if ($crtDir) {
+            Copy-Item "$($crtDir.FullName)\*.dll" build\bin\ -Force
+            Write-Host "CRT DLLs copied from $($crtDir.FullName)"
+          } else {
+            # Fallback 1: the VC tools bin dir ships the same runtime DLLs
+            $toolsBin = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\*\VC\Tools\MSVC\*\bin\Hostx64\x64" -Directory -ErrorAction SilentlyContinue |
+              Sort-Object FullName -Descending | Select-Object -First 1
+            if ($toolsBin) {
+              foreach ($n in $crtNames) {
+                $src = Join-Path $toolsBin.FullName $n
+                if (Test-Path $src) { Copy-Item $src build\bin\ -Force }
+              }
+              Write-Host "CRT DLLs copied from $($toolsBin.FullName)"
+            } else {
+              # Fallback 2: the runner itself has the redist installed in System32
+              foreach ($n in $crtNames) {
+                $src = Join-Path "$env:SystemRoot\System32" $n
+                if (Test-Path $src) { Copy-Item $src build\bin\ -Force }
+              }
+              Write-Host "CRT DLLs copied from System32"
+            }
+          }
+          Get-ChildItem build\bin\msvcp140*.dll, build\bin\vcruntime140*.dll -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
 
           # Slim the bundle: a pure-Widgets app never loads the software-GL stack
           # or the D3D12 shader compilers, and the redist installer is redundant
