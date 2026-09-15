@@ -7,10 +7,16 @@
   <!-- Run as the invoking user: no UAC elevation prompt, no "installer
        detection" heuristics (an unsigned exe that asks for admin is a
        primary SmartScreen / Defender false-positive trigger). -->
-  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3" security="1.0">
-    <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
-      <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
-    </requestedPrivileges>
+  <!-- NOTE: "security" is a CHILD ELEMENT of trustInfo, never an attribute.
+       Writing <trustInfo security="1.0"> makes fusion reject the whole
+       activation context: the app then fails to start on EVERY Windows PC
+       with "side-by-side configuration is incorrect". -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
   </trustInfo>
 
   <!-- Declare OS-version support so the loader applies correct compat shims. -->
