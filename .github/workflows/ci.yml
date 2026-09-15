@@ -237,7 +237,7 @@ jobs:
             Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1 -ExpandProperty FullName
           if (-not $signtool) { throw "signtool.exe not found" }
 
-          & $signtool sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com `
+          & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
             /f $pfxPath /p $env:CODESIGN_PFX_PASSWORD build\bin\CodeForge.exe
           if ($LASTEXITCODE -ne 0) { throw "signing CodeForge.exe failed" }
 
@@ -251,7 +251,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
 
           # Sign the installer itself (Authenticode on the outer exe).
-          & $signtool sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com `
+          & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
             /f $pfxPath /p $env:CODESIGN_PFX_PASSWORD installer\Output\CodeForgeSetup-*.exe
           if ($LASTEXITCODE -ne 0) { throw "signing installer failed" }
           Move-Item installer\Output\CodeForgeSetup-*.exe dist\
