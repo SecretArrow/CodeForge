@@ -67,10 +67,16 @@ endif()
 qt_add_executable(CodeForge WIN32 MACOSX_BUNDLE src/main.cpp)
 target_link_libraries(CodeForge PRIVATE CodeForgeLib)
 if(MSVC)
-    # The manifest is embedded through src/app/codeforge.rc (asInvoker, UTF-8
-    # code page, DPI awareness). The linker's auto-generated manifest would
-    # collide with it (CVT1100 duplicate resource), so disable it.
-    target_link_options(CodeForge PRIVATE "/MANIFEST:NO")
+    # Embed the application manifest the canonical way: Windows SDK mt.exe
+    # merges src/app/app.manifest into RT_MANIFEST id 1 after the link.
+    # (Embedding it via the .rc as `1 24` produced an activation context
+    # Windows rejected at startup: "side-by-side configuration is incorrect".)
+    add_custom_command(TARGET CodeForge POST_BUILD
+        COMMAND mt.exe -nologo
+                -manifest "${CMAKE_CURRENT_SOURCE_DIR}/src/app/app.manifest"
+                "-outputresource:$<TARGET_FILE:CodeForge>;#1"
+        COMMENT "Embedding app.manifest via mt.exe"
+        VERBATIM)
 endif()
 if(WIN32)
     # Embedded VERSIONINFO + icon + manifest (SmartScreen / Explorer metadata).

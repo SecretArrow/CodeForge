@@ -2,7 +2,7 @@
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity version="1.2.1.0" processorArchitecture="*"
                     name="CodeForge.Project.CodeForge" type="win32"/>
-  <description>CodeForge — lightweight native code editor</description>
+  <description>CodeForge - lightweight native code editor</description>
 
   <!-- Run as the invoking user: no UAC elevation prompt, no "installer
        detection" heuristics (an unsigned exe that asks for admin is a

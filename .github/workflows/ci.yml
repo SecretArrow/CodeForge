@@ -187,13 +187,25 @@ jobs:
           # The runner's desktop session starts the real GUI process; if the exe
           # dies within 10 seconds (missing DLL, broken plugin, crash), the
           # build FAILS and nothing reaches the release.
-          $proc = Start-Process -FilePath "build\bin\CodeForge.exe" -WorkingDirectory "build\bin" -PassThru
-          Start-Sleep -Seconds 10
-          if ($proc.HasExited) {
-            throw "CodeForge.exe exited during startup smoke test (ExitCode=$($proc.ExitCode))."
+          try {
+            $proc = Start-Process -FilePath "build\bin\CodeForge.exe" -WorkingDirectory "build\bin" -PassThru -ErrorAction Stop
+            Start-Sleep -Seconds 10
+            if ($proc.HasExited) {
+              throw "CodeForge.exe exited during startup smoke test (ExitCode=$($proc.ExitCode))."
+            }
+            Stop-Process -Id $proc.Id -Force
+            Write-Host "Smoke test passed: CodeForge.exe stayed alive for 10s."
+          } catch {
+            # Dump SideBySide / Application Error events: they contain the exact
+            # fusion/activation-context failure reason (manifest line, assembly).
+            Write-Host "::error::Smoke test failed: $_"
+            Get-WinEvent -LogName Application -MaxEvents 40 -ErrorAction SilentlyContinue |
+              Where-Object { $_.ProviderName -in @('SideBySide','Application Error','Windows Error Reporting','.NET Runtime') } |
+              Select-Object -First 10 | ForEach-Object {
+                Write-Host "EVENT [$($_.ProviderName)] $($_.TimeCreated): $($_.Message)"
+              }
+            throw
           }
-          Stop-Process -Id $proc.Id -Force
-          Write-Host "Smoke test passed: CodeForge.exe stayed alive for 10s."
 
           # ---- Code signing (SmartScreen hardening) ----
           # Priority 1: repository secret (stable publisher identity).
