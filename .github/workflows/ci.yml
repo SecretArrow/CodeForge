@@ -119,7 +119,55 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          windeployqt --release --no-translations build\bin\CodeForge.exe
+          windeployqt --release --no-translations --no-opengl-sw --no-system-d3d-compiler build\bin\CodeForge.exe
+
+          # ---- Ship the MSVC CRT DLLs (fixes "VCRUNTIME140.dll was not found") ----
+          # windeployqt only drops vc_redist.x64.exe (an installer the user would
+          # have to run manually - easily missed, and the app then fails to start
+          # on a clean Windows with "VCRUNTIME140.dll was not found"). Copy the
+          # actual runtime DLLs next to the exe so CodeForge starts out of the box.
+          $crtDir = Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio\2022" -Recurse -Directory -Filter "Microsoft.VC143.CRT" -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $crtDir) { throw "Microsoft.VC143.CRT directory not found on runner" }
+          Copy-Item "$($crtDir.FullName)\*.dll" build\bin\ -Force
+          Write-Host "CRT DLLs copied from $($crtDir.FullName):"
+          Get-ChildItem build\bin\msvcp140*.dll, build\bin\vcruntime140*.dll | Select-Object -ExpandProperty Name
+
+          # Slim the bundle: a pure-Widgets app never loads the software-GL stack
+          # or the D3D12 shader compilers, and the redist installer is redundant
+          # now that the CRT DLLs ship directly. Smaller download, less AV noise.
+          Remove-Item build\bin\vc_redist.x64.exe, build\bin\dxcompiler.dll, build\bin\dxil.dll -Force -ErrorAction SilentlyContinue
+
+          # ---- Hard verification of startup-critical files ----
+          # Every file below is required for the app to even show a window.
+          $required = @(
+            'build\bin\CodeForge.exe',
+            'build\bin\Qt6Core.dll',
+            'build\bin\Qt6Gui.dll',
+            'build\bin\Qt6Widgets.dll',
+            'build\bin\msvcp140.dll',
+            'build\bin\msvcp140_1.dll',
+            'build\bin\vcruntime140.dll',
+            'build\bin\vcruntime140_1.dll',
+            'build\bin\platforms\qwindows.dll'
+          )
+          foreach ($f in $required) {
+            if (-not (Test-Path $f)) { throw "STARTUP-CRITICAL FILE MISSING: $f" }
+          }
+          Write-Host "All startup-critical files present."
+
+          # ---- Smoke test: the packaged exe must actually launch ----
+          # This is the exact failure class reported by users (app not opening).
+          # The runner's desktop session starts the real GUI process; if the exe
+          # dies within 10 seconds (missing DLL, broken plugin, crash), the
+          # build FAILS and nothing reaches the release.
+          $proc = Start-Process -FilePath "build\bin\CodeForge.exe" -WorkingDirectory "build\bin" -PassThru
+          Start-Sleep -Seconds 10
+          if ($proc.HasExited) {
+            throw "CodeForge.exe exited during startup smoke test (ExitCode=$($proc.ExitCode))."
+          }
+          Stop-Process -Id $proc.Id -Force
+          Write-Host "Smoke test passed: CodeForge.exe stayed alive for 10s."
 
           # ---- Code signing (SmartScreen hardening) ----
           # Priority 1: repository secret (stable publisher identity).
@@ -151,7 +199,7 @@ jobs:
             Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1 -ExpandProperty FullName
           if (-not $signtool) { throw "signtool.exe not found" }
 
-          & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
+          & $signtool sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com `
             /f $pfxPath /p $env:CODESIGN_PFX_PASSWORD build\bin\CodeForge.exe
           if ($LASTEXITCODE -ne 0) { throw "signing CodeForge.exe failed" }
 
@@ -165,7 +213,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
 
           # Sign the installer itself (Authenticode on the outer exe).
-          & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
+          & $signtool sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com `
             /f $pfxPath /p $env:CODESIGN_PFX_PASSWORD installer\Output\CodeForgeSetup-*.exe
           if ($LASTEXITCODE -ne 0) { throw "signing installer failed" }
           Move-Item installer\Output\CodeForgeSetup-*.exe dist\
