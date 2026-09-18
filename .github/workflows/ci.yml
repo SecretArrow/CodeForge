@@ -115,12 +115,43 @@ jobs:
         # TestAsmCore (NIST vectors, published CRC check value, differential
         # oracles). Scoped to TestAsmCore because the GUI-suite tests are
         # exercised on the Linux job.
+        #
+        # The test exe is freshly linked and windeployqt has NOT run yet, so
+        # the step wires up its runtime explicitly (Qt bin + VC redist CRT).
+        # On failure it prints the raw exit code (0xC0000135 => missing DLL,
+        # 0xC0000005 => access violation) plus the faulting event, so a real
+        # asm bug is distinguishable from an environment problem.
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
+          $ErrorActionPreference = "Stop"
+          $testDir = "build\tests"
+          $exe = Join-Path $testDir "TestAsmCore.exe"
+          if (-not (Test-Path $exe)) { throw "TestAsmCore.exe not found at $exe" }
           $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
+          $crt = Join-Path $env:VCToolsRedistDir "x64\Microsoft.VC143.CRT"
+          if (Test-Path $crt) { $env:PATH = "$crt;$env:PATH" }
+          else { Write-Host "CRT redist dir not found at $crt - relying on System32" }
+          $out = "$env:RUNNER_TEMP\asm-stdout.txt"
+          $err = "$env:RUNNER_TEMP\asm-stderr.txt"
+          $proc = Start-Process -FilePath $exe -WorkingDirectory $testDir `
+            -NoNewWindow -PassThru -Wait `
+            -RedirectStandardOutput $out -RedirectStandardError $err
+          Write-Host "--- TestAsmCore.exe stdout ---"
+          Get-Content $out -ErrorAction SilentlyContinue | Write-Host
+          Write-Host "--- TestAsmCore.exe stderr ---"
+          Get-Content $err -ErrorAction SilentlyContinue | Write-Host
+          Write-Host "ExitCode: $($proc.ExitCode) (0x$('{0:X}' -f $proc.ExitCode))"
+          if ($proc.ExitCode -ne 0) {
+            Get-WinEvent -LogName Application -MaxEvents 30 -ErrorAction SilentlyContinue |
+              Where-Object { $_.ProviderName -in @('Application Error','Windows Error Reporting','SideBySide') } |
+              Select-Object -First 6 | ForEach-Object {
+                Write-Host "EVENT [$($_.ProviderName)]: $($_.Message)"
+              }
+            throw "TestAsmCore.exe failed with exit code $($proc.ExitCode)"
+          }
           cmake -E chdir build ctest -R TestAsmCore --output-on-failure
 
       - name: "Package (Windows: deploy, sign, installer, portable zip)"
