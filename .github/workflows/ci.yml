@@ -127,7 +127,9 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           $ErrorActionPreference = "Stop"
-          $testDir = "build\tests"
+          # Test executables have no RUNTIME_OUTPUT_DIRECTORY override, so
+          # they land in the build root (ctest confirmed this path in run 3).
+          $testDir = "build"
           $exe = Join-Path $testDir "TestAsmCore.exe"
           if (-not (Test-Path $exe)) { throw "TestAsmCore.exe not found at $exe" }
           $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
