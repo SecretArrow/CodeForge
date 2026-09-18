@@ -110,10 +110,14 @@ cf_sha_have_w:
     and     edi, r13d
     or      edi, eax
     ; eax = T1 = h + Sigma1(e) + Ch + K[i] + W[i]
+    ; NOTE: [K256 + rbx*4] cannot be encoded RIP-relative (index present),
+    ; and an absolute ADDR32 relocation is rejected by the x64 linker
+    ; (LNK2017) - so materialize the table address with a RIP-relative LEA.
     mov     eax, r15d
     add     eax, esi
     add     eax, edi
-    add     eax, dword ptr [K256 + rbx*4]
+    lea     rdx, [K256]
+    add     eax, dword ptr [rdx + rbx*4]
     add     eax, dword ptr [rsp + rbx*4]
     ; esi = Sigma0(a) = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22)
     mov     esi, r8d
