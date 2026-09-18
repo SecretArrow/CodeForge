@@ -55,6 +55,15 @@ cf_asm_sha256_compress proc frame
     .endprolog
 
     mov     rbp, rcx                ; rbp = state[8]
+    ; load working variables a..h from the chaining state (FIPS 180-4)
+    mov     r8d,  dword ptr [rbp + 0]
+    mov     r9d,  dword ptr [rbp + 4]
+    mov     r10d, dword ptr [rbp + 8]
+    mov     r11d, dword ptr [rbp + 12]
+    mov     r12d, dword ptr [rbp + 16]
+    mov     r13d, dword ptr [rbp + 20]
+    mov     r14d, dword ptr [rbp + 24]
+    mov     r15d, dword ptr [rbp + 28]
     xor     rbx, rbx                ; i = 0
 
 cf_sha_round:
@@ -156,14 +165,22 @@ cf_sha_have_w:
     cmp     rbx, 64
     jb      cf_sha_round
 
-    ; write final state
+    ; fold the working variables back into the chaining state (H[i] += a..h)
+    add     r8d,  dword ptr [rbp + 0]
     mov     dword ptr [rbp + 0],  r8d
+    add     r9d,  dword ptr [rbp + 4]
     mov     dword ptr [rbp + 4],  r9d
+    add     r10d, dword ptr [rbp + 8]
     mov     dword ptr [rbp + 8],  r10d
+    add     r11d, dword ptr [rbp + 12]
     mov     dword ptr [rbp + 12], r11d
+    add     r12d, dword ptr [rbp + 16]
     mov     dword ptr [rbp + 16], r12d
+    add     r13d, dword ptr [rbp + 20]
     mov     dword ptr [rbp + 20], r13d
+    add     r14d, dword ptr [rbp + 24]
     mov     dword ptr [rbp + 24], r14d
+    add     r15d, dword ptr [rbp + 28]
     mov     dword ptr [rbp + 28], r15d
 
     add     rsp, 280
