@@ -13,6 +13,7 @@
 #include <QByteArray>
 #include <QtGlobal>
 
+#include "asm/asmcore.h"   // Assembly Core: cf_asm_secure_zero (Windows x64)
 #include "core/Logger.h"
 
 #if defined(Q_OS_WIN)
@@ -25,16 +26,11 @@
 
 namespace cf::sec {
 
+// v1.3.0: routes through the Assembly Core on Windows x64 (real .asm stores
+// the optimizer cannot elide); other platforms use the portable fallback.
 static inline void secureZero(void* p, size_t n)
 {
-#if defined(Q_OS_WIN)
-    SecureZeroMemory(p, n);
-#elif defined(HAVE_EXPLICIT_BZERO)
-    explicit_bzero(p, n);
-#else
-    volatile unsigned char* v = static_cast<volatile unsigned char*>(p);
-    for (size_t i = 0; i < n; ++i) v[i] = 0;
-#endif
+    cf::asmcore::secureZero(p, n);
 }
 
 class SecureBuffer {

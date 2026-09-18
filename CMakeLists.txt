@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(CodeForge VERSION 1.2.1 LANGUAGES CXX)
+project(CodeForge VERSION 1.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -47,6 +47,21 @@ qt_add_library(CodeForgeLib STATIC EXCLUDE_FROM_ALL ${CODEFORGE_SOURCES})
 target_include_directories(CodeForgeLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(CodeForgeLib PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Network Qt6::Sql)
 
+if(WIN32 AND MSVC)
+    # Assembly Core: real x86-64 MASM implementations of security/search
+    # hot-path primitives (see src/asm/asmcore.h). Non-Windows/non-x64 builds
+    # use the bit-exact C++ fallbacks in the same header, so all platforms
+    # keep identical semantics; tests/test_asmcore.cpp pins them everywhere.
+    enable_language(ASM_MASM)
+    target_sources(CodeForgeLib PRIVATE
+        src/asm/asm_secure_zero.asm
+        src/asm/asm_crc32c.asm
+        src/asm/asm_utf8_validate.asm
+        src/asm/asm_memsearch.asm
+        src/asm/asm_sha256_compress.asm
+    )
+endif()
+
 if(WIN32)
     target_link_libraries(CodeForgeLib PUBLIC bcrypt)   # Windows CNG (AES-256-GCM, random)
     target_link_libraries(CodeForgeLib PUBLIC psapi)   # process metrics (profiler)
@@ -56,7 +71,7 @@ elseif(OPENSSL_FOUND)
     target_compile_definitions(CodeForgeLib PUBLIC CF_HAVE_OPENSSL)
 endif()
 
-target_compile_definitions(CodeForgeLib PRIVATE CF_APP_VERSION="1.2.1" QT_MESSAGELOGCONTEXT)
+target_compile_definitions(CodeForgeLib PRIVATE CF_APP_VERSION="1.3.0" QT_MESSAGELOGCONTEXT)
 
 if(MSVC)
     target_compile_options(CodeForgeLib PRIVATE /W4 /permissive- /Zc:__cplusplus /utf-8)

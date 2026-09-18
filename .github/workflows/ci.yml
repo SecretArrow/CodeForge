@@ -110,6 +110,19 @@ jobs:
           export LD_LIBRARY_PATH="${QT_ROOT_DIR}/lib:${LD_LIBRARY_PATH}"
           QT_QPA_PLATFORM=offscreen ctest --output-on-failure
 
+      - name: Run Assembly Core tests (Windows)
+        # Executes the real MASM-built cf_asm_* machine code through
+        # TestAsmCore (NIST vectors, published CRC check value, differential
+        # oracles). Scoped to TestAsmCore because the GUI-suite tests are
+        # exercised on the Linux job.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
+          cmake -E chdir build ctest -R TestAsmCore --output-on-failure
+
       - name: "Package (Windows: deploy, sign, installer, portable zip)"
         if: runner.os == 'Windows'
         shell: pwsh

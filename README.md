@@ -8,6 +8,17 @@
 
 ## Ringkasan Fitur yang Diimplementasikan
 
+### Baru di v1.3.0 — Assembly Core (x86-64 asli, .asm MASM)
+- **Inti Assembly nyata di dalam aplikasi**: 5 fungsi x86-64 ditulis tangan dalam MASM (`src/asm/*.asm`), dirakit `ml64`, dan ditautkan ke binary Windows:
+  - `cf_asm_secure_zero` — penghapusan memori yang tidak bisa dioptimasi compiler (jalur panas `SecureBuffer` lapisan keamanan)
+  - `cf_asm_crc32c` — CRC-32C perangkat keras via instruksi SSE4.2 `crc32`
+  - `cf_asm_utf8_validate` — validasi UTF-8 ketat (tolak overlong, surrogate, > U+10FFFF)
+  - `cf_asm_memsearch` — pencarian substring (first-byte scan)
+  - `cf_asm_sha256_compress` — fungsi kompresi SHA-256 FIPS 180-4 penuh (64 ronda)
+- **Diuji otomatis di CI Windows** (mesin .asm asli dieksekusi): vektor NIST "abc", check value CRC-32C `0xE3069283`, oracle `QCryptographicHash`, dan uji diferensial acak — `TestAsmCore`
+- **Fallback C++ bit-exact** untuk Linux/macOS: semua platform berperilaku identik, semua terkunci oleh unit test
+- **Catatan kejujuran teknis**: ini adalah *inti Assembly* untuk primitif jalur panas — bukan aplikasi 100% .asm. UI tetap Qt/C++ (framework toolkit GUI); menulis ulang seluruh editor secara hand-assembly tidak realistis untuk dirawat dan tidak menyelesaikan masalah deployment apa pun
+
 ### Baru di v1.2.0
 - **IntelliSense-style autocomplete** — popup completion (Ctrl+Space / auto-trigger) dari kata dokumen + tabel keyword per bahasa + snippet, filter/rank dengan fallback, integrasi popup sadar tema
 - **Vim mode** (modal: NORMAL/INSERT/VISUAL — gerak `hjkl w b e 0 ^ $ gg G`, operator `d/c/y` + count, `x X D C S p P u o O i a A I`, `/` dan `:w :q :wq :N`) dan **Emacs mode** (`C-f/b/n/p/a/e/d/k/y`, `M-f/b/w/d`, mark `C-Space`, kill ring) — via key interceptor, status mode di status bar
@@ -200,6 +211,8 @@ ctest --test-dir build/<preset>      # menjalankan 10 suite:
 ```
 src/
 ├── app/          Application bootstrap, single-instance, crash marker
+├── asm/          Assembly Core (x86-64 MASM): secure_zero, crc32c,
+│                 utf8_validate, memsearch, sha256_compress + fallback header
 ├── core/         TextDocument, DocumentManager, Encoding, FuzzyMatch,
 │                 CommandRegistry, Logger, FileUtils, AppPaths
 ├── editor/       CodeEditor, TabBar, EditorGroup, EditorArea (split),
