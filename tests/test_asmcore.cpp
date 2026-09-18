@@ -133,7 +133,7 @@ private slots:
             "\xc2\x80", "\xdf\xbf",                         // 2-byte min/max
             "\xe0\xa0\x80", "\xef\xbf\xbf",                 // 3-byte min/max
             "\xf0\x90\x80\x80", "\xf4\x8f\xbf\xbf",         // 4-byte min (U+10000) / max (U+10FFFF)
-            "mix\xc3\xa9\xe6\x97\xa5\xf0\x9f\x99\x82end",
+            "mix\xc3\xa9\xe6\x97\xa5\xf0\x9f\x99\x82" "end",   // concatenation: stops \x escape eating 'e'
         };
         for (const char* v : validCases)
             QVERIFY2(utf8Valid(v, std::strlen(v)), qPrintable(QString("should be valid: %1").arg(QString(v))));
@@ -178,10 +178,11 @@ private slots:
         QCOMPARE(memSearch(nullptr, 0, nullptr, 0), std::int64_t(0));            // both empty
         const std::uint8_t z[] = "z";
         QCOMPARE(memSearch(hay, hayLen, z, 1), std::int64_t(37));                // single byte
-        // Repeated-overlap pattern.
+        // Repeated-overlap pattern: "aaaab" contains "aab" at offset 2
+        // (four a's then b; offsets 0 and 1 fail because needle needs b).
         const std::uint8_t aaab[] = "aaaab";
         const std::uint8_t ab[] = "aab";
-        QCOMPARE(memSearch(aaab, 5, ab, 3), std::int64_t(1));
+        QCOMPARE(memSearch(aaab, 5, ab, 3), std::int64_t(2));
     }
 
     void memSearchDifferential()

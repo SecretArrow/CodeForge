@@ -49,17 +49,29 @@ target_link_libraries(CodeForgeLib PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::C
 
 if(WIN32 AND MSVC)
     # Assembly Core: real x86-64 MASM implementations of security/search
-    # hot-path primitives (see src/asm/asmcore.h). Non-Windows/non-x64 builds
-    # use the bit-exact C++ fallbacks in the same header, so all platforms
-    # keep identical semantics; tests/test_asmcore.cpp pins them everywhere.
-    enable_language(ASM_MASM)
-    target_sources(CodeForgeLib PRIVATE
-        src/asm/asm_secure_zero.asm
-        src/asm/asm_crc32c.asm
-        src/asm/asm_utf8_validate.asm
-        src/asm/asm_memsearch.asm
-        src/asm/asm_sha256_compress.asm
-    )
+    # hot-path primitives (see src/asm/asmcore.h). Assembled via explicit
+    # ml64 custom commands with an explicit /Fo object path: CMake's
+    # built-in ASM_MASM rule misplaces objects under the Ninja generator
+    # (observed: ml64 assembles cleanly but LNK1181 cannot find
+    # CMakeFiles\...\asm_xxx.asm.obj). Non-x64/non-MSVC builds use the
+    # bit-exact C++ fallbacks in asmcore.h; tests pin semantics everywhere.
+    set(CF_ASM_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/asm)
+    set(CF_ASM_OBJ_DIR ${CMAKE_CURRENT_BINARY_DIR}/asm)
+    file(MAKE_DIRECTORY ${CF_ASM_OBJ_DIR})
+    set(CF_ASM_NAMES secure_zero crc32c utf8_validate memsearch sha256_compress)
+    set(CF_ASM_OBJECTS "")
+    foreach(cf_name IN LISTS CF_ASM_NAMES)
+        set(cf_asm_obj ${CF_ASM_OBJ_DIR}/${cf_name}.obj)
+        add_custom_command(OUTPUT ${cf_asm_obj}
+            COMMAND ml64 /nologo /c /Fo${cf_asm_obj} ${CF_ASM_SRC_DIR}/asm_${cf_name}.asm
+            DEPENDS ${CF_ASM_SRC_DIR}/asm_${cf_name}.asm
+            COMMENT "Assembling asm_${cf_name}.asm (ml64)"
+            VERBATIM)
+        list(APPEND CF_ASM_OBJECTS ${cf_asm_obj})
+    endforeach()
+    target_sources(CodeForgeLib PRIVATE ${CF_ASM_OBJECTS})
+    set_source_files_properties(${CF_ASM_OBJECTS} PROPERTIES
+        EXTERNAL_OBJECT TRUE GENERATED TRUE)
 endif()
 
 if(WIN32)
