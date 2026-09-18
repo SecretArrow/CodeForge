@@ -136,22 +136,19 @@ jobs:
           $crt = Join-Path $env:VCToolsRedistDir "x64\Microsoft.VC143.CRT"
           if (Test-Path $crt) { $env:PATH = "$crt;$env:PATH" }
           else { Write-Host "CRT redist dir not found at $crt - relying on System32" }
-          $out = "$env:RUNNER_TEMP\asm-stdout.txt"
-          $err = "$env:RUNNER_TEMP\asm-stderr.txt"
+          # Sanity: the binary must start and list its test functions.
+          Write-Host "--- TestAsmCore.exe -functions ---"
+          & $exe -functions 2>&1 | Write-Host
+          # Full run: QtTest writes its report straight to a file (-o), which
+          # is immune to stdout buffering being lost on a nonzero exit.
+          $resFile = "$env:RUNNER_TEMP\asm-result.txt"
           $proc = Start-Process -FilePath $exe -WorkingDirectory $testDir `
             -NoNewWindow -PassThru -Wait `
-            -RedirectStandardOutput $out -RedirectStandardError $err
-          Write-Host "--- TestAsmCore.exe stdout ---"
-          Get-Content $out -ErrorAction SilentlyContinue | Write-Host
-          Write-Host "--- TestAsmCore.exe stderr ---"
-          Get-Content $err -ErrorAction SilentlyContinue | Write-Host
+            -ArgumentList "-o", "$resFile,txt"
           Write-Host "ExitCode: $($proc.ExitCode) (0x$('{0:X}' -f $proc.ExitCode))"
+          Write-Host "--- QtTest report ---"
+          Get-Content $resFile -ErrorAction SilentlyContinue | Write-Host
           if ($proc.ExitCode -ne 0) {
-            Get-WinEvent -LogName Application -MaxEvents 30 -ErrorAction SilentlyContinue |
-              Where-Object { $_.ProviderName -in @('Application Error','Windows Error Reporting','SideBySide') } |
-              Select-Object -First 6 | ForEach-Object {
-                Write-Host "EVENT [$($_.ProviderName)]: $($_.Message)"
-              }
             throw "TestAsmCore.exe failed with exit code $($proc.ExitCode)"
           }
           cmake -E chdir build ctest -R TestAsmCore --output-on-failure
