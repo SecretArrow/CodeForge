@@ -119,14 +119,18 @@ cf_sha_have_w:
     and     edi, r13d
     or      edi, eax
     ; eax = T1 = h + Sigma1(e) + Ch + K[i] + W[i]
-    ; NOTE: [K256 + rbx*4] cannot be encoded RIP-relative (index present),
-    ; and an absolute ADDR32 relocation is rejected by the x64 linker
-    ; (LNK2017) - so materialize the table address with a RIP-relative LEA.
+    ; NOTE 1: [K256 + rbx*4] cannot be encoded RIP-relative (an index
+    ; register is present), and an absolute ADDR32 relocation is rejected
+    ; by the x64 linker (LNK2017) - so materialize the table address with
+    ; a RIP-relative LEA.
+    ; NOTE 2: the LEA must target rcx, NOT rdx: rdx holds the block pointer
+    ; for the W[0..15] big-endian loads of the next rounds (rcx is dead
+    ; here - the state pointer lives in rbp).
     mov     eax, r15d
     add     eax, esi
     add     eax, edi
-    lea     rdx, [K256]
-    add     eax, dword ptr [rdx + rbx*4]
+    lea     rcx, [K256]
+    add     eax, dword ptr [rcx + rbx*4]
     add     eax, dword ptr [rsp + rbx*4]
     ; esi = Sigma0(a) = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22)
     mov     esi, r8d
